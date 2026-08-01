@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>سجل النشاطات - <%= typeof shopName !== 'undefined' ? shopName : '' %></title>
+  <%- include('partials/head') %>
+  <style>
+    .details-list { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+    .detail-row { display: flex; gap: 4px; align-items: baseline; }
+    .detail-label { color: var(--text-muted); white-space: nowrap; }
+    .detail-value { color: var(--text, #e5e7eb); word-break: break-word; }
+  </style>
+</head>
+<body>
+  <% var active = 'activity-log' %>
+  <%- include('partials/nav') %>
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>سجل النشاطات</h1>
+        <p>آخر 300 حدث حساس (حذف، تعديل أسعار، تعديل رصيد، تسجيل دخول)</p>
+      </div>
+    </div>
+    <div class="card">
+      <% if (rows.length === 0) { %>
+        <div class="empty-state">لسه مفيش أي نشاطات مسجلة</div>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>الوقت</th>
+              <th>المستخدم</th>
+              <th>الحدث</th>
+              <th>الكيان</th>
+              <th>تفاصيل</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rows.forEach(r => { %>
+              <tr>
+                <td class="mono" style="color:var(--text-muted, #64748b); white-space:nowrap;">
+                  <%= new Date(r.created_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true }) %>
+                </td>
+                <td><strong><%= r.username || 'غير معروف' %></strong></td>
+                <td><%= r.action %></td>
+                <td style="color:var(--text-muted, #64748b);">
+                  <% if (r.entity_type) { %>
+                    <%= r.entity_type %><% if (r.entity_id) { %> #<%= r.entity_id %><% } %>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+                <td style="max-width:320px;">
+                  <% if (r.detailsFormatted && r.detailsFormatted.length) { %>
+                    <div class="details-list">
+                      <% r.detailsFormatted.forEach(d => { %>
+                        <div class="detail-row">
+                          <span class="detail-label"><%= d.label %>:</span>
+                          <% if (d.ltr) { %>
+                            <span class="detail-value" dir="ltr"><%= d.value %></span>
+                          <% } else { %>
+                            <span class="detail-value" dir="auto"><%= d.value %></span>
+                          <% } %>
+                        </div>
+                      <% }) %>
+                    </div>
+                  <% } else { %>
+                    <span style="color:var(--text-muted)">-</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

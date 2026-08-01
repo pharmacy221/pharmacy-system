@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>التشغيلات والصلاحية - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'batches' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>التشغيلات والصلاحية</h1>
+        <p>استلام بضاعة جديدة (Batches) وتتبّع تاريخ الصلاحية لكل تشغيلة</p>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>التشغيلات الحالية (<%= batches.length %>)</h2>
+        <% if (batches.length === 0) { %>
+          <div class="empty-state">مفيش تشغيلات مسجلة لسه</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الصنف</th><th>رقم التشغيلة</th><th>المورد</th><th>الصلاحية</th><th>المتبقي (حبة)</th></tr>
+            </thead>
+            <tbody>
+              <% batches.forEach(b => { %>
+                <tr>
+                  <td data-label="الصنف"><%= b.medicine_name %></td>
+                  <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="رقم التشغيلة"><%= b.batch_number || '—' %></td>
+                  <td style="color:var(--text-muted)" data-label="المورد"><%= b.supplier_name || '—' %></td>
+                  <td class="mono" data-label="الصلاحية"
+                      style="<%= b.days_left < 0 ? 'color:var(--danger)' : (b.days_left <= 90 ? 'color:var(--amber)' : '') %>">
+                    <%= new Date(b.expiry_date).toLocaleDateString('ar-EG') %>
+                    <% if (b.days_left < 0) { %><br><span class="badge badge-ignored">منتهية</span>
+                    <% } else if (b.days_left <= 90) { %><br><span class="badge badge-pending">باقي <%= b.days_left %> يوم</span><% } %>
+                  </td>
+                  <td class="mono" data-label="المتبقي (حبة)"><%= b.quantity_units %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>استلام تشغيلة جديدة</h2>
+        <form action="/products/batches/add" method="POST">
+          <div class="field">
+            <label>الصنف</label>
+            <select name="medicine_id" required>
+              <option value="">-- اختر الصنف --</option>
+              <% medicines.forEach(m => { %>
+                <option value="<%= m.id %>"><%= m.name %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="field">
+            <label>المورد (اختياري)</label>
+            <select name="supplier_id">
+              <option value="">-- بدون مورد --</option>
+              <% suppliers.forEach(s => { %>
+                <option value="<%= s.id %>"><%= s.name %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="field">
+            <label>رقم التشغيلة (اختياري)</label>
+            <input type="text" name="batch_number" placeholder="مثال: LOT-2026-001">
+          </div>
+          <div class="field">
+            <label>تاريخ الصلاحية</label>
+            <input type="date" name="expiry_date" required>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label>الكمية المستلمة (بالحبة)</label>
+              <input type="number" name="received_units" min="1" required placeholder="مثال: 500">
+            </div>
+            <div class="field">
+              <label>سعر تكلفة الحبة</label>
+              <input type="number" step="0.01" name="cost_price_unit" required placeholder="0.00">
+            </div>
+          </div>
+          <button type="submit" class="btn">تسجيل استلام التشغيلة</button>
+        </form>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:12px;">
+          عند التسجيل: مخزون الصنف ومتوسط سعر التكلفة بيتحدّثوا تلقائيًا، والبيع بعد كده بيتم بنظام "الأقرب صلاحية يتصرف الأول" (FEFO).
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

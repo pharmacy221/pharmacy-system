@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title><%= supplier.name %> - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'suppliers' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1><%= supplier.name %></h1>
+        <p>بيانات المورد والتشغيلات المستلمة منه</p>
+      </div>
+      <a href="/suppliers" class="btn-ghost-sm">← رجوع لقائمة الموردين</a>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>بيانات المورد</h2>
+        <div class="field"><label>الهاتف</label><div><%= supplier.phone || '-' %></div></div>
+        <div class="field"><label>العنوان</label><div><%= supplier.address || '-' %></div></div>
+        <div class="field"><label>ملاحظات</label><div><%= supplier.notes || '-' %></div></div>
+
+        <div class="stat-grid" style="grid-template-columns: 1fr; margin-top:16px;">
+          <div class="stat-card">
+            <div class="label">إجمالي قيمة البضاعة المستلمة</div>
+            <div class="value accent"><%= Number(totalPurchased).toFixed(2) %> ج.م</div>
+            <div class="sub"><%= batches.length %> تشغيلة</div>
+          </div>
+        </div>
+
+        <h3 class="section-title" style="margin-top:20px;">تعديل بيانات المورد</h3>
+        <form action="/suppliers/<%= supplier.id %>/update" method="POST">
+          <div class="field">
+            <label>اسم المورد</label>
+            <input type="text" name="name" value="<%= supplier.name %>" required>
+          </div>
+          <div class="field">
+            <label>الهاتف</label>
+            <input type="text" name="phone" value="<%= supplier.phone || '' %>">
+          </div>
+          <div class="field">
+            <label>العنوان</label>
+            <input type="text" name="address" value="<%= supplier.address || '' %>">
+          </div>
+          <div class="field">
+            <label>ملاحظات</label>
+            <textarea name="notes" rows="2"><%= supplier.notes || '' %></textarea>
+          </div>
+          <button type="submit" class="btn btn-sm">حفظ التعديلات</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>التشغيلات المستلمة من هذا المورد</h2>
+        <% if (batches.length === 0) { %>
+          <div class="empty-state">لسه مفيش تشغيلات مستلمة من المورد ده</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الصنف</th><th>رقم التشغيلة</th><th>الكمية المستلمة</th><th>سعر التكلفة</th><th>تاريخ الاستلام</th></tr>
+            </thead>
+            <tbody>
+              <% batches.forEach(b => { %>
+                <tr>
+                  <td data-label="الصنف"><%= b.medicine_name %></td>
+                  <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="رقم التشغيلة"><%= b.batch_number || '—' %></td>
+                  <td class="mono" data-label="الكمية المستلمة"><%= b.received_units %></td>
+                  <td class="mono" data-label="سعر التكلفة"><%= Number(b.cost_price_unit).toFixed(2) %></td>
+                  <td class="mono" style="color:var(--text-muted)" data-label="تاريخ الاستلام"><%= new Date(b.received_at).toLocaleDateString('ar-EG') %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:12px;">
+          لاستلام تشغيلة جديدة من هذا المورد، استخدم صفحة <a href="/products/batches" style="color:var(--accent)">التشغيلات والصلاحية</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

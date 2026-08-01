@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>فاتورة رقم #<%= invoice.id %> - <%= shopSettings.name %></title>
+  <%- include('partials/head') %>
+  <style>
+    :root {
+      --receipt-bg: #ffffff;
+      --receipt-text: #1e293b;
+      --receipt-border: #e2e8f0;
+    }
+    body {
+      background-color: #f1f5f9;
+      font-family: 'Cairo', sans-serif;
+      margin: 0;
+      padding: 20px 10px;
+      color: var(--receipt-text);
+    }
+    .receipt-wrapper { max-width: 480px; margin: 0 auto; }
+    .receipt-card {
+      background: var(--receipt-bg);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--receipt-border);
+    }
+    .shop-header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed var(--receipt-border); padding-bottom: 12px; }
+    .shop-header h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px 0; color: #0f172a; }
+    .shop-header p { margin: 0; color: #64748b; font-size: 13px; }
+    .info-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; border: 1px solid #edf2f7; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .info-row .label { color: #64748b; font-weight: 600; }
+    .info-row .val { font-weight: 700; color: #0f172a; }
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+    .items-table th { background: #f1f5f9; color: #475569; padding: 8px 6px; text-align: right; font-weight: 700; border-bottom: 1px solid var(--receipt-border); }
+    .items-table td { padding: 10px 6px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    .items-table .mono { font-family: monospace; direction: ltr; text-align: center; }
+    .total-box { border-top: 2px dashed var(--receipt-border); padding-top: 14px; margin-bottom: 16px; }
+    .total-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 6px; }
+    .total-row.discount .val { color: #dc2626; }
+    .total-row.grand-total { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--receipt-border); }
+    .total-row.grand-total .total-label { font-size: 18px; font-weight: 700; }
+    .total-row.grand-total .total-amount { font-size: 22px; font-weight: 800; color: #059669; }
+    .rx-warning {
+      background: #fffbeb; border: 1px dashed #fbbf24; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: #92400e;
+    }
+    .receipt-footer { text-align: center; color: #94a3b8; font-size: 12px; }
+    .receipt-footer .shop-contact { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--receipt-border); color: #64748b; font-size: 12px; line-height: 1.8; }
+    .actions { display: flex; gap: 12px; margin-top: 20px; justify-content: center; }
+    .btn-action { padding: 10px 20px; border-radius: 8px; border: none; font-family: inherit; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-print { background: #10b981; color: #fff; }
+    .btn-new { background: #3b82f6; color: #fff; }
+    @media print {
+      body { background: none; padding: 0; }
+      .actions { display: none !important; }
+      .receipt-card { box-shadow: none; border: none; padding: 0; width: 100%; }
+      .receipt-wrapper { max-width: 100%; }
+      .items-table, .items-table thead, .items-table tbody, .items-table th, .items-table td, .items-table tr {
+        display: revert !important; width: revert !important;
+      }
+      .items-table thead { display: table-header-group !important; }
+      .items-table tr { display: table-row !important; }
+      .items-table th, .items-table td { display: table-cell !important; border-bottom: 1px solid #f1f5f9 !important; }
+      .items-table td::before { content: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <% const unitLabels = { unit: 'حبة', strip: 'شريط', box: 'علبة' }; %>
+
+  <div class="receipt-wrapper">
+    <div class="receipt-card">
+      <div class="shop-header">
+        <h1><%= shopSettings.name %></h1>
+        <p>فاتورة بيع</p>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-row">
+          <span class="label">رقم الفاتورة:</span>
+          <span class="val mono">#<%= invoice.id %></span>
+        </div>
+        <div class="info-row">
+          <span class="label">التاريخ:</span>
+          <span class="val mono"><%= new Date(invoice.created_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %></span>
+        </div>
+        <div class="info-row">
+          <span class="label">طريقة الدفع:</span>
+          <span class="val"><%= invoice.payment_method === 'card' ? 'بطاقة' : (invoice.payment_method === 'other' ? 'أخرى' : 'كاش') %></span>
+        </div>
+        <% if (invoice.customer_name) { %>
+          <div class="info-row">
+            <span class="label">العميل:</span>
+            <span class="val"><%= invoice.customer_name %></span>
+          </div>
+        <% } %>
+        <% if (invoice.customer_phone) { %>
+          <div class="info-row">
+            <span class="label">تليفون العميل:</span>
+            <span class="val mono"><%= invoice.customer_phone %></span>
+          </div>
+        <% } %>
+      </div>
+
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>الصنف</th>
+            <th style="text-align:center;">الوحدة</th>
+            <th style="text-align: center;">الكمية</th>
+            <th style="text-align: center;">السعر</th>
+            <th style="text-align: left;">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% items.forEach(item => { %>
+            <tr>
+              <td data-label="الصنف"><strong><%= item.medicine_name_snapshot %></strong></td>
+              <td class="mono" style="text-align:center; color:#64748b; font-size:11px;" data-label="الوحدة"><%= unitLabels[item.sale_unit] || item.sale_unit %></td>
+              <td style="text-align: center;" class="mono" data-label="الكمية"><%= item.quantity %></td>
+              <td style="text-align: center;" class="mono" data-label="السعر"><%= Number(item.unit_price).toFixed(2) %></td>
+              <td style="text-align: left;" class="mono" data-label="الإجمالي"><%= Number(item.total).toFixed(2) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+
+      <div class="total-box">
+        <% if (Number(invoice.discount) > 0) { %>
+          <div class="total-row">
+            <span class="label">المجموع الفرعي:</span>
+            <span class="val mono"><%= (Number(invoice.total) + Number(invoice.discount)).toFixed(2) %> ج.م</span>
+          </div>
+          <div class="total-row discount">
+            <span class="label">إجمالي الخصم:</span>
+            <span class="val mono">- <%= Number(invoice.discount).toFixed(2) %> ج.م</span>
+          </div>
+        <% } %>
+        <div class="total-row grand-total">
+          <span class="total-label">الإجمالي النهائي</span>
+          <span class="total-amount mono"><%= Number(invoice.total).toFixed(2) %> ج.م</span>
+        </div>
+      </div>
+
+      <div class="receipt-footer">
+        <p>شكراً لتعاملكم معنا، نتمنى لكم الشفاء العاجل</p>
+        <% if (shopSettings.phone || shopSettings.address) { %>
+          <div class="shop-contact">
+            <% if (shopSettings.phone) { %><div>تليفون الصيدلية: <%= shopSettings.phone %></div><% } %>
+            <% if (shopSettings.address) { %><div><%= shopSettings.address %></div><% } %>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-action btn-print" onclick="window.print()">🖨️ طباعة</button>
+      <a href="/pos" class="btn-action btn-new">➕ فاتورة جديدة</a>
+    </div>
+  </div>
+</body>
+</html>

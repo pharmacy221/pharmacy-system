@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الأصناف والمخزون - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'products' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>الأصناف والمخزون</h1>
+        <p>إدارة الأدوية والمستحضرات: الأسعار، وحدات البيع (حبة/شريط/علبة)، والمخزون</p>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="card" style="margin-bottom:16px;">
+      <form method="GET" action="/products" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input type="text" name="q" value="<%= searchQuery %>" placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود..." style="flex:1; min-width:220px;">
+        <button type="submit" class="btn-outline btn-sm">بحث</button>
+        <% if (searchQuery) { %><a href="/products" class="btn-ghost-sm">إلغاء</a><% } %>
+        <a href="/products/batches" class="btn-ghost-sm">📦 التشغيلات والصلاحية</a>
+      </form>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>كل الأصناف (<%= medicines.length %>)</h2>
+        <% if (medicines.length === 0) { %>
+          <div class="empty-state">مفيش أصناف مضافة لسه</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الاسم</th><th>الباركود</th><th>الفئة</th><th>سعر الحبة</th><th>المخزون (حبة)</th><th></th></tr>
+            </thead>
+            <tbody>
+              <% medicines.forEach(p => { %>
+                <tr>
+                  <td data-label="الاسم">
+                    <%= p.name %>
+                    <% if (p.generic_name) { %><br><span style="color:var(--text-muted); font-size:12px;"><%= p.generic_name %></span><% } %>
+                    <% if (p.requires_prescription) { %> <span class="badge badge-pending">روشتة</span><% } %>
+                    <% if (p.controlled_substance) { %> <span class="badge badge-ignored">خاضع للرقابة</span><% } %>
+                  </td>
+                  <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="الباركود"><%= p.barcode || '—' %></td>
+                  <td style="color:var(--text-muted)" data-label="الفئة"><%= p.category %></td>
+                  <td class="mono" data-label="سعر الحبة"><%= Number(p.sale_price_unit).toFixed(2) %></td>
+                  <td class="mono" style="<%= p.stock_units <= p.min_stock_units ? 'color:var(--amber)' : '' %>" data-label="المخزون (حبة)"><%= p.stock_units %></td>
+                  <td style="display:flex; gap:6px;" data-label="إجراءات">
+                    <button type="button" class="btn-ghost-sm" onclick="document.getElementById('edit-<%= p.id %>').classList.toggle('open')">تعديل</button>
+                    <form action="/products/<%= p.id %>/delete" method="POST" onsubmit="return confirm('تأكيد إلغاء تفعيل الصنف؟')">
+                      <button class="btn-ghost-sm" type="submit">إلغاء تفعيل</button>
+                    </form>
+                  </td>
+                </tr>
+                <tr id="edit-<%= p.id %>" class="edit-row">
+                  <td colspan="6">
+                    <form action="/products/<%= p.id %>/update" method="POST" class="form-grid" style="grid-template-columns: repeat(4, 1fr); align-items:end;">
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الاسم التجاري</label>
+                        <input type="text" name="name" value="<%= p.name %>" required>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الاسم العلمي</label>
+                        <input type="text" name="generic_name" value="<%= p.generic_name || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الفئة</label>
+                        <select name="category">
+                          <% categories.forEach(c => { %>
+                            <option value="<%= c %>" <%= p.category === c ? 'selected' : '' %>><%= c %></option>
+                          <% }) %>
+                        </select>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الشكل الدوائي</label>
+                        <input type="text" name="dosage_form" value="<%= p.dosage_form || '' %>" placeholder="أقراص / شراب / حقن...">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الشركة المصنعة</label>
+                        <input type="text" name="manufacturer" value="<%= p.manufacturer || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الباركود</label>
+                        <input type="text" name="barcode" value="<%= p.barcode || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>عدد الحبات بالشريط</label>
+                        <input type="number" min="1" name="units_per_strip" value="<%= p.units_per_strip %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>عدد الشرائط بالعلبة</label>
+                        <input type="number" min="1" name="strips_per_box" value="<%= p.strips_per_box %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر بيع الحبة</label>
+                        <input type="number" step="0.01" name="sale_price_unit" value="<%= p.sale_price_unit %>" required>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر بيع الشريط (اختياري)</label>
+                        <input type="number" step="0.01" name="sale_price_strip" value="<%= p.sale_price_strip || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر بيع العلبة (اختياري)</label>
+                        <input type="number" step="0.01" name="sale_price_box" value="<%= p.sale_price_box || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر تكلفة الحبة</label>
+                        <input type="number" step="0.01" name="cost_price_unit" value="<%= p.cost_price_unit %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>حد التنبيه (بالحبة)</label>
+                        <input type="number" name="min_stock_units" value="<%= p.min_stock_units %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="requires_prescription" style="width:auto;" <%= p.requires_prescription ? 'checked' : '' %>>
+                        <label style="margin:0;">يحتاج روشتة</label>
+                      </div>
+                      <div class="field" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="controlled_substance" style="width:auto;" <%= p.controlled_substance ? 'checked' : '' %>>
+                        <label style="margin:0;">خاضع للرقابة</label>
+                      </div>
+                      <button type="submit" class="btn btn-sm">حفظ</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>إضافة صنف جديد</h2>
+        <form action="/products/add" method="POST" class="form-grid" style="grid-template-columns: repeat(2, 1fr);">
+          <div class="field">
+            <label>الاسم التجاري</label>
+            <input type="text" name="name" required placeholder="مثال: بانادول اكسترا">
+          </div>
+          <div class="field">
+            <label>الاسم العلمي (المادة الفعالة)</label>
+            <input type="text" name="generic_name" placeholder="مثال: باراسيتامول">
+          </div>
+          <div class="field">
+            <label>الفئة</label>
+            <select name="category">
+              <% categories.forEach(c => { %>
+                <option value="<%= c %>"><%= c %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="field">
+            <label>الشكل الدوائي</label>
+            <input type="text" name="dosage_form" placeholder="أقراص / شراب / حقن...">
+          </div>
+          <div class="field">
+            <label>الشركة المصنعة</label>
+            <input type="text" name="manufacturer">
+          </div>
+          <div class="field">
+            <label>الباركود (اختياري)</label>
+            <input type="text" name="barcode" placeholder="امسحه بالاسكانر أو اكتبه يدويًا">
+          </div>
+          <div class="field">
+            <label>عدد الحبات بالشريط</label>
+            <input type="number" min="1" name="units_per_strip" value="1">
+          </div>
+          <div class="field">
+            <label>عدد الشرائط بالعلبة</label>
+            <input type="number" min="1" name="strips_per_box" value="1">
+          </div>
+          <div class="field">
+            <label>سعر بيع الحبة</label>
+            <input type="number" step="0.01" name="sale_price_unit" required placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>سعر بيع الشريط (اختياري، بيتحسب تلقائي لو فاضي)</label>
+            <input type="number" step="0.01" name="sale_price_strip" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>سعر بيع العلبة (اختياري)</label>
+            <input type="number" step="0.01" name="sale_price_box" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>سعر تكلفة الحبة</label>
+            <input type="number" step="0.01" name="cost_price_unit" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>المخزون الافتتاحي (بالحبة)</label>
+            <input type="number" name="stock_units" value="0">
+          </div>
+          <div class="field">
+            <label>حد التنبيه (بالحبة)</label>
+            <input type="number" name="min_stock_units" value="10">
+          </div>
+          <div class="field" style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" name="requires_prescription" style="width:auto;">
+            <label style="margin:0;">يحتاج روشتة</label>
+          </div>
+          <div class="field" style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" name="controlled_substance" style="width:auto;">
+            <label style="margin:0;">خاضع للرقابة</label>
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <button type="submit" class="btn">إضافة الصنف</button>
+          </div>
+        </form>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:12px;">
+          ملحوظة: المخزون بيتحدّث تلقائيًا بعد كده من خلال <a href="/products/batches" style="color:var(--accent)">استلام التشغيلات</a> (توريد بضاعة جديدة بتاريخ صلاحية).
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

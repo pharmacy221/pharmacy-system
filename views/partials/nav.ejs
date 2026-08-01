@@ -1,0 +1,65 @@
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="/" class="brand">
+      <span class="brand-mark">💊</span>
+      <span class="brand-text"><%= typeof shopName !== 'undefined' ? shopName : 'الصيدلية' %></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="فتح القائمة">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav">
+      <% const currentActive = typeof active !== 'undefined' ? active : ''; %>
+      <a href="/" class="<%= currentActive === 'home' ? 'active' : '' %>">الرئيسية</a>
+      <% if (typeof role !== 'undefined' && role === 'admin') { %>
+        <a href="/dashboard" class="<%= currentActive === 'dashboard' ? 'active' : '' %>">لوحة التحكم</a>
+      <% } %>
+      <a href="/pos" class="<%= currentActive === 'pos' ? 'active' : '' %>">الكاشير</a>
+      <a href="/shifts" class="<%= currentActive === 'shifts' ? 'active' : '' %>">الوردية</a>
+      <a href="/sales" class="<%= currentActive === 'sales' ? 'active' : '' %>">فواتير البيع</a>
+      <a href="/returns" class="<%= currentActive === 'returns' ? 'active' : '' %>">المرتجعات</a>
+      <a href="/products" class="<%= currentActive === 'products' ? 'active' : '' %>">الأصناف والمخزون</a>
+      <a href="/products/batches" class="<%= currentActive === 'batches' ? 'active' : '' %>">التشغيلات والصلاحية</a>
+      <% if (typeof role !== 'undefined' && role === 'admin') { %>
+        <a href="/suppliers" class="<%= currentActive === 'suppliers' ? 'active' : '' %>">الموردين</a>
+        <a href="/coupons" class="<%= currentActive === 'coupons' ? 'active' : '' %>">الكوبونات</a>
+        <a href="/reports" class="<%= currentActive === 'reports' ? 'active' : '' %>">التقارير</a>
+        <a href="/settings" class="<%= currentActive === 'settings' ? 'active' : '' %>">الإعدادات</a>
+        <a href="/activity-log" class="<%= currentActive === 'activity-log' ? 'active' : '' %>">سجل النشاطات</a>
+      <% } %>
+    </nav>
+    <div class="topbar-user">
+      <span><%= typeof username !== 'undefined' ? username : '' %></span>
+      <form action="/logout" method="POST">
+        <button type="submit" class="btn-ghost-sm">خروج</button>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    @media (min-width: 769px) {
+      .topbar-inner { flex-wrap: nowrap !important; }
+      .main-nav {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        max-width: 100%;
+      }
+      .main-nav a { flex: 0 0 auto; }
+      .main-nav::-webkit-scrollbar { height: 4px; }
+      .main-nav::-webkit-scrollbar-thumb {
+        background: var(--border-color, rgba(255,255,255,.15));
+        border-radius: 4px;
+      }
+    }
+  </style>
+</header>
+<script>
+  document.getElementById('navToggle').addEventListener('click', function () {
+    document.getElementById('mainNav').classList.toggle('open');
+    this.classList.toggle('open');
+  });
+</script>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الكوبونات - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'coupons' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>الكوبونات</h1>
+        <p>إدارة كوبونات الخصم المستخدمة في شاشة الكاشير</p>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>كل الكوبونات (<%= coupons.length %>)</h2>
+        <% if (coupons.length === 0) { %>
+          <div class="empty-state">مفيش كوبونات مضافة لسه</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr>
+                <th>الكود</th>
+                <th>الخصم</th>
+                <th>الانتهاء</th>
+                <th>الحالة</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% coupons.forEach(c => { %>
+                <tr>
+                  <td class="mono" data-label="الكود"><%= c.code %></td>
+                  <td class="mono" data-label="الخصم">
+                    <%= c.discount_percent ? Number(c.discount_percent) + '%' : Number(c.discount_amount).toFixed(2) + ' ج.م' %>
+                  </td>
+                  <td style="color:var(--text-muted); font-size:12px;" data-label="الانتهاء">
+                    <%= c.expires_at ? new Date(c.expires_at).toLocaleDateString('ar-EG') : 'بلا تاريخ' %>
+                  </td>
+                  <td data-label="الحالة">
+                    <% if (c.active) { %>
+                      <span style="color:var(--accent); font-weight:700;">فعّال</span>
+                    <% } else { %>
+                      <span style="color:var(--text-muted);">متوقف</span>
+                    <% } %>
+                  </td>
+                  <td style="display:flex; gap:6px;" data-label="إجراءات">
+                    <form action="/coupons/<%= c.id %>/toggle" method="POST">
+                      <button type="submit" class="btn-ghost-sm"><%= c.active ? 'إيقاف' : 'تفعيل' %></button>
+                    </form>
+                    <form action="/coupons/<%= c.id %>/delete" method="POST" onsubmit="return confirm('تأكيد حذف الكوبون؟')">
+                      <button type="submit" class="btn-ghost-sm">حذف</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>إضافة كوبون جديد</h2>
+        <form action="/coupons/add" method="POST">
+          <div class="field">
+            <label>الكود</label>
+            <input type="text" name="code" required placeholder="مثال: WELCOME10" style="text-transform:uppercase;">
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label>نوع الخصم</label>
+              <select name="discount_kind" required>
+                <option value="percent">نسبة %</option>
+                <option value="fixed">مبلغ ثابت (ج.م)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>قيمة الخصم</label>
+              <input type="number" step="0.01" min="0.01" name="discount_value" required placeholder="مثال: 10">
+            </div>
+          </div>
+          <div class="field">
+            <label>تاريخ الانتهاء (اختياري)</label>
+            <input type="date" name="expires_at">
+          </div>
+          <button type="submit" class="btn">إضافة الكوبون</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
