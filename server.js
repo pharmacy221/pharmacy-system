@@ -18,6 +18,8 @@ const activityLogRoutes = require('./routes/activity-log');
 const shiftsRouter = require('./routes/shifts');
 const suppliersRouter = require('./routes/suppliers');
 const couponsRouter = require('./routes/coupons');
+const symptomSearchRoutes = require('./routes/symptom-search');
+
 
 const { requireLogin } = require('./middleware/auth');
 
@@ -70,6 +72,7 @@ app.use('/activity-log', activityLogRoutes);
 app.use('/shifts', shiftsRouter);
 app.use('/suppliers', suppliersRouter);
 app.use('/coupons', couponsRouter);
+app.use('/symptom-search', symptomSearchRoutes);
 
 app.use((req, res) => {
   res.status(404).send('الصفحة غير موجودة');
