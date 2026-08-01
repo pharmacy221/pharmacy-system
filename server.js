@@ -53,7 +53,7 @@ app.use(session({
 app.use((req, res, next) => {
   res.locals.username = req.session.username || null;
   res.locals.role = req.session.role || null;
-  res.locals.shopName = process.env.PHARMACY_NAME || 'الصيدلية';
+  res.locals.shopName = process.env.PHARMACY_NAME || 'السوركي ';
   next();
 });
 
