@@ -14,7 +14,7 @@ async function getMedicines(q) {
   if (q && q.trim()) {
     const term = `%${q.trim()}%`;
     return query(
-      `SELECT * FROM medicines WHERE is_active = true AND (name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1)
+      `SELECT * FROM medicines WHERE is_active = true AND (name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1)
        ORDER BY lower(name)`,
       [term]
     );
@@ -36,7 +36,7 @@ router.get('/', async (req, res, next) => {
 router.post('/add', async (req, res, next) => {
   try {
     const {
-      name, generic_name, category, dosage_form, manufacturer, barcode,
+      name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
       requires_prescription, controlled_substance,
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
@@ -50,12 +50,12 @@ router.post('/add', async (req, res, next) => {
 
     await query(
       `INSERT INTO medicines (
-          name, generic_name, category, dosage_form, manufacturer, barcode,
+          name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
           requires_prescription, controlled_substance,
           units_per_strip, strips_per_box,
           sale_price_unit, sale_price_strip, sale_price_box,
           cost_price_unit, stock_units, min_stock_units
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [
         name.trim(),
         generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -63,6 +63,7 @@ router.post('/add', async (req, res, next) => {
         dosage_form && dosage_form.trim() ? dosage_form.trim() : null,
         manufacturer && manufacturer.trim() ? manufacturer.trim() : null,
         barcode && barcode.trim() ? barcode.trim() : null,
+        serial_number && serial_number.trim() ? serial_number.trim() : null,
         requires_prescription === 'on',
         controlled_substance === 'on',
         parseInt(units_per_strip) || 1,
@@ -81,7 +82,7 @@ router.post('/add', async (req, res, next) => {
   } catch (err) {
     if (err.code === '23505') {
       const medicines = await getMedicines();
-      return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
+      return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود أو السريال ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
     }
     next(err);
   }
@@ -91,7 +92,7 @@ router.post('/add', async (req, res, next) => {
 router.post('/:id/update', async (req, res, next) => {
   try {
     const {
-      name, generic_name, category, dosage_form, manufacturer, barcode,
+      name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
       requires_prescription, controlled_substance,
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
@@ -100,12 +101,12 @@ router.post('/:id/update', async (req, res, next) => {
 
     await query(
       `UPDATE medicines SET
-          name = $1, generic_name = $2, category = $3, dosage_form = $4, manufacturer = $5, barcode = $6,
-          requires_prescription = $7, controlled_substance = $8,
-          units_per_strip = $9, strips_per_box = $10,
-          sale_price_unit = $11, sale_price_strip = $12, sale_price_box = $13,
-          cost_price_unit = $14, min_stock_units = $15
-       WHERE id = $16`,
+          name = $1, generic_name = $2, category = $3, dosage_form = $4, manufacturer = $5, barcode = $6, serial_number = $7,
+          requires_prescription = $8, controlled_substance = $9,
+          units_per_strip = $10, strips_per_box = $11,
+          sale_price_unit = $12, sale_price_strip = $13, sale_price_box = $14,
+          cost_price_unit = $15, min_stock_units = $16
+       WHERE id = $17`,
       [
         name.trim(),
         generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -113,6 +114,7 @@ router.post('/:id/update', async (req, res, next) => {
         dosage_form && dosage_form.trim() ? dosage_form.trim() : null,
         manufacturer && manufacturer.trim() ? manufacturer.trim() : null,
         barcode && barcode.trim() ? barcode.trim() : null,
+        serial_number && serial_number.trim() ? serial_number.trim() : null,
         requires_prescription === 'on',
         controlled_substance === 'on',
         parseInt(units_per_strip) || 1,
@@ -131,7 +133,7 @@ router.post('/:id/update', async (req, res, next) => {
   } catch (err) {
     if (err.code === '23505') {
       const medicines = await getMedicines();
-      return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
+      return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود أو السريال ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
     }
     next(err);
   }
