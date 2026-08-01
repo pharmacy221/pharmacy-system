@@ -19,6 +19,8 @@ const shiftsRouter = require('./routes/shifts');
 const suppliersRouter = require('./routes/suppliers');
 const couponsRouter = require('./routes/coupons');
 const symptomSearchRoutes = require('./routes/symptom-search');
+const payrollRoutes = require('./routes/payroll');
+const expensesRoutes = require('./routes/expenses');
 
 
 const { requireLogin } = require('./middleware/auth');
@@ -73,6 +75,8 @@ app.use('/shifts', shiftsRouter);
 app.use('/suppliers', suppliersRouter);
 app.use('/coupons', couponsRouter);
 app.use('/symptom-search', symptomSearchRoutes);
+app.use('/payroll', payrollRoutes);
+app.use('/expenses', expensesRoutes);
 
 app.use((req, res) => {
   res.status(404).send('الصفحة غير موجودة');
