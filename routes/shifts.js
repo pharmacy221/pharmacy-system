@@ -6,16 +6,22 @@ const { requireLogin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
 router.use(requireLogin);
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function nowTimeStr() {
+  const d = new Date();
+  return d.toTimeString().slice(0, 5); // HH:MM
+}
+
 // عرض صفحة إدارة الوردية + آخر الورديات المغلقة
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.session.userId;
-
     const activeShift = await queryOne(
       'SELECT * FROM shifts WHERE opened_by = $1 AND closed_at IS NULL',
       [userId]
     );
-
     let liveSalesTotal = 0;
     if (activeShift) {
       const row = await queryOne(
@@ -24,7 +30,6 @@ router.get('/', async (req, res, next) => {
       );
       liveSalesTotal = Number(row.total);
     }
-
     const pastShifts = await query(`
       SELECT sh.*, u.full_name AS user_full_name, u.username AS user_username
       FROM shifts sh
@@ -33,7 +38,6 @@ router.get('/', async (req, res, next) => {
       ORDER BY sh.id DESC
       LIMIT 15
     `);
-
     res.render('shifts', { activeShift, liveSalesTotal, pastShifts, active: 'shifts' });
   } catch (err) {
     next(err);
@@ -47,9 +51,21 @@ router.post('/start', async (req, res, next) => {
   try {
     const check = await queryOne('SELECT id FROM shifts WHERE opened_by = $1 AND closed_at IS NULL', [userId]);
     if (check) return res.status(400).send('هناك وردية مفتوحة بالفعل!');
-
     await query('INSERT INTO shifts (opened_by, opening_balance) VALUES ($1, $2)', [userId, Number(opening_balance) || 0]);
     await logActivity(req, { action: 'فتح وردية' });
+
+    // تسجيل حضور تلقائي لو اليوزر مربوط بموظف في جدول الرواتب
+    const user = await queryOne('SELECT employee_id FROM users WHERE id = $1', [userId]);
+    if (user && user.employee_id) {
+      await query(
+        `INSERT INTO attendance (employee_id, attendance_date, status, check_in)
+         VALUES ($1, $2, 'present', $3)
+         ON CONFLICT (employee_id, attendance_date)
+         DO UPDATE SET status = 'present', check_in = COALESCE(attendance.check_in, EXCLUDED.check_in)`,
+        [user.employee_id, todayStr(), nowTimeStr()]
+      );
+    }
+
     res.redirect('/shifts');
   } catch (err) {
     next(err);
@@ -63,12 +79,24 @@ router.post('/close', async (req, res, next) => {
   try {
     const shift = await queryOne('SELECT * FROM shifts WHERE opened_by = $1 AND closed_at IS NULL', [userId]);
     if (!shift) return res.status(400).send('لا توجد وردية مفتوحة لإغلاقها');
-
     await query(
       `UPDATE shifts SET closing_balance = $1, closed_at = now() WHERE id = $2`,
       [parseFloat(closing_balance) || 0, shift.id]
     );
     await logActivity(req, { action: 'إغلاق وردية', entityType: 'shift', entityId: shift.id });
+
+    // تسجيل انصراف تلقائي لو اليوزر مربوط بموظف في جدول الرواتب
+    const user = await queryOne('SELECT employee_id FROM users WHERE id = $1', [userId]);
+    if (user && user.employee_id) {
+      await query(
+        `INSERT INTO attendance (employee_id, attendance_date, status, check_out)
+         VALUES ($1, $2, 'present', $3)
+         ON CONFLICT (employee_id, attendance_date)
+         DO UPDATE SET check_out = $3`,
+        [user.employee_id, todayStr(), nowTimeStr()]
+      );
+    }
+
     res.redirect('/shifts');
   } catch (err) {
     next(err);
