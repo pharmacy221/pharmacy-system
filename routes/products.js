@@ -14,12 +14,19 @@ async function getMedicines(q) {
   if (q && q.trim()) {
     const term = `%${q.trim()}%`;
     return query(
-      `SELECT * FROM medicines WHERE is_active = true AND (name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1)
+      `SELECT * FROM medicines WHERE is_active = true AND (name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1 OR conditions_tags ILIKE $1)
        ORDER BY lower(name)`,
       [term]
     );
   }
   return query('SELECT * FROM medicines WHERE is_active = true ORDER BY lower(name)');
+}
+
+// يحوّل قيمة سن (نص) لرقم أو null لو فاضية
+function parseAge(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const n = parseFloat(val);
+  return Number.isNaN(n) ? null : n;
 }
 
 // ============ قائمة الأصناف ============
@@ -40,7 +47,8 @@ router.post('/add', async (req, res, next) => {
       requires_prescription, controlled_substance,
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
-      cost_price_unit, stock_units, min_stock_units
+      cost_price_unit, stock_units, min_stock_units,
+      conditions_tags, min_age_years, max_age_years
     } = req.body;
 
     if (!name || !name.trim() || sale_price_unit === undefined || sale_price_unit === '') {
@@ -54,8 +62,9 @@ router.post('/add', async (req, res, next) => {
           requires_prescription, controlled_substance,
           units_per_strip, strips_per_box,
           sale_price_unit, sale_price_strip, sale_price_box,
-          cost_price_unit, stock_units, min_stock_units
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          cost_price_unit, stock_units, min_stock_units,
+          conditions_tags, min_age_years, max_age_years
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
       [
         name.trim(),
         generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -73,7 +82,10 @@ router.post('/add', async (req, res, next) => {
         sale_price_box ? parseFloat(sale_price_box) : null,
         parseFloat(cost_price_unit) || 0,
         parseInt(stock_units) || 0,
-        parseInt(min_stock_units) || 10
+        parseInt(min_stock_units) || 10,
+        conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
+        parseAge(min_age_years),
+        parseAge(max_age_years)
       ]
     );
 
@@ -96,7 +108,8 @@ router.post('/:id/update', async (req, res, next) => {
       requires_prescription, controlled_substance,
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
-      cost_price_unit, min_stock_units
+      cost_price_unit, min_stock_units,
+      conditions_tags, min_age_years, max_age_years
     } = req.body;
 
     await query(
@@ -105,8 +118,9 @@ router.post('/:id/update', async (req, res, next) => {
           requires_prescription = $8, controlled_substance = $9,
           units_per_strip = $10, strips_per_box = $11,
           sale_price_unit = $12, sale_price_strip = $13, sale_price_box = $14,
-          cost_price_unit = $15, min_stock_units = $16
-       WHERE id = $17`,
+          cost_price_unit = $15, min_stock_units = $16,
+          conditions_tags = $17, min_age_years = $18, max_age_years = $19
+       WHERE id = $20`,
       [
         name.trim(),
         generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -124,6 +138,9 @@ router.post('/:id/update', async (req, res, next) => {
         sale_price_box ? parseFloat(sale_price_box) : null,
         parseFloat(cost_price_unit) || 0,
         parseInt(min_stock_units) || 10,
+        conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
+        parseAge(min_age_years),
+        parseAge(max_age_years),
         req.params.id
       ]
     );
