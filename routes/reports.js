@@ -54,11 +54,11 @@ router.get('/', async (req, res, next) => {
     const maxRevenue = Math.max(1, ...dailySeries.map((d) => Number(d.revenue)));
 
     const topMedicines = await query(`
-      SELECT medicine_name_snapshot AS name, SUM(quantity_units) AS units_sold, SUM(total) AS revenue
+      SELECT si.medicine_name_snapshot AS name, SUM(si.quantity_units) AS units_sold, SUM(si.total) AS revenue
       FROM sale_items si
       JOIN sale_invoices inv ON inv.id = si.invoice_id
       WHERE inv.created_at::date BETWEEN $1 AND $2
-      GROUP BY medicine_name_snapshot
+      GROUP BY si.medicine_name_snapshot
       ORDER BY units_sold DESC
       LIMIT 10
     `, [from, to]);
