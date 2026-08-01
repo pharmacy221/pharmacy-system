@@ -19,7 +19,7 @@
       <a href="/returns" class="<%= currentActive === 'returns' ? 'active' : '' %>">المرتجعات</a>
       <a href="/products" class="<%= currentActive === 'products' ? 'active' : '' %>">الأصناف والمخزون</a>
       <a href="/products/batches" class="<%= currentActive === 'batches' ? 'active' : '' %>">التشغيلات والصلاحية</a>
-     <a href="/symptom-search" class="<%= active === 'symptom-search' ? 'active' : '' %>">بحث بالحالة</a>
+     <a href="/symptom-search" class="<%= currentActive === 'symptom-search' ? 'active' : '' %>">بحث بالحالة</a>
       <% if (typeof role !== 'undefined' && role === 'admin') { %>
         <a href="/suppliers" class="<%= currentActive === 'suppliers' ? 'active' : '' %>">الموردين</a>
         <a href="/coupons" class="<%= currentActive === 'coupons' ? 'active' : '' %>">الكوبونات</a>
