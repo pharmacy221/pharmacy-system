@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title><%= employee.name %> - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'payroll' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1><%= employee.name %></h1>
+        <p><%= employee.job_title || '' %> — الراتب الأساسي: <span class="mono"><%= Number(employee.base_salary).toFixed(2) %></span> ج.م</p>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a href="/payroll/<%= employee.id %>/full-report?from=<%= from %>&to=<%= to %>" target="_blank" class="btn-outline">🖨 تقرير شامل للفترة</a>
+        <a href="/payroll" class="btn-ghost-sm">رجوع للموظفين</a>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="card">
+      <form method="GET" class="range-form">
+        <div class="field"><label>من تاريخ</label><input type="date" name="from" value="<%= from %>"></div>
+        <div class="field"><label>إلى تاريخ</label><input type="date" name="to" value="<%= to %>"></div>
+        <button type="submit" class="btn-outline btn-sm">تحديث</button>
+      </form>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">أيام حضور</div><div class="value mono"><%= attendanceStats.present_count %></div></div>
+      <div class="stat-card"><div class="label">أيام غياب</div><div class="value mono"><%= attendanceStats.absent_count %></div></div>
+      <div class="stat-card"><div class="label">إجازات</div><div class="value mono"><%= attendanceStats.leave_count %></div></div>
+      <div class="stat-card"><div class="label">تأخير</div><div class="value mono"><%= attendanceStats.late_count %></div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>تسجيل حضور يوم</h2>
+        <form method="POST" action="/payroll/<%= employee.id %>/attendance" class="form-grid">
+          <div class="field"><label>التاريخ *</label><input type="date" name="attendance_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
+          <div class="field">
+            <label>الحالة</label>
+            <select name="status">
+              <option value="present">حاضر</option>
+              <option value="late">متأخر</option>
+              <option value="leave">إجازة</option>
+              <option value="absent">غائب</option>
+            </select>
+          </div>
+          <div class="field"><label>وقت الحضور</label><input type="time" name="check_in"></div>
+          <div class="field"><label>وقت الانصراف</label><input type="time" name="check_out"></div>
+          <div class="field"><label>ملاحظات</label><input type="text" name="notes"></div>
+          <button type="submit" class="btn">حفظ</button>
+        </form>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:8px;">لو سجّلت نفس اليوم تاني، البيانات القديمة بتتحدّث بدل ما تتكرر.</p>
+
+        <div class="table-responsive" style="margin-top:14px;">
+          <table>
+            <thead><tr><th>التاريخ</th><th>الحالة</th><th>حضور</th><th>انصراف</th></tr></thead>
+            <tbody>
+              <% attendance.forEach(a => { %>
+                <tr>
+                  <td><%= new Date(a.attendance_date).toLocaleDateString('ar-EG') %></td>
+                  <td>
+                    <% const statusLabels = { present:'حاضر', late:'متأخر', leave:'إجازة', absent:'غائب' }; %>
+                    <span class="badge <%= a.status === 'absent' ? 'badge-ignored' : (a.status === 'late' ? 'badge-pending' : 'badge-matched') %>">
+                      <%= statusLabels[a.status] || a.status %>
+                    </span>
+                  </td>
+                  <td class="mono"><%= a.check_in || '-' %></td>
+                  <td class="mono"><%= a.check_out || '-' %></td>
+                </tr>
+              <% }) %>
+              <% if (attendance.length === 0) { %><tr><td colspan="4" class="empty-state">مفيش سجل حضور في المدى ده</td></tr><% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>السلف</h2>
+        <p>إجمالي السلف الغير مسددة: <span class="mono err"><%= unsettledAdvances.toFixed(2) %></span> ج.م</p>
+        <form method="POST" action="/payroll/<%= employee.id %>/advances/add" class="form-grid">
+          <div class="field"><label>القيمة *</label><input type="number" step="0.01" name="amount" required></div>
+          <div class="field"><label>التاريخ</label><input type="date" name="advance_date" value="<%= new Date().toISOString().slice(0,10) %>"></div>
+          <div class="field"><label>السبب</label><input type="text" name="reason"></div>
+          <button type="submit" class="btn">صرف سلفة</button>
+        </form>
+
+        <div class="table-responsive" style="margin-top:14px;">
+          <table>
+            <thead><tr><th>التاريخ</th><th>القيمة</th><th>السبب</th><th>الحالة</th><th></th></tr></thead>
+            <tbody>
+              <% advancesList.forEach(a => { %>
+                <tr>
+                  <td><%= new Date(a.advance_date).toLocaleDateString('ar-EG') %></td>
+                  <td class="mono"><%= Number(a.amount).toFixed(2) %></td>
+                  <td><%= a.reason || '-' %></td>
+                  <td><span class="badge <%= a.settled ? 'badge-matched' : 'badge-pending' %>"><%= a.settled ? 'مخصومة' : 'لسه مستحقة' %></span></td>
+                  <td>
+                    <% if (!a.settled) { %>
+                      <form method="POST" action="/payroll/<%= employee.id %>/advances/<%= a.id %>/delete" style="display:inline" onsubmit="return confirm('حذف السلفة؟');">
+                        <button type="submit" class="btn-danger btn-sm">حذف</button>
+                      </form>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+              <% if (advancesList.length === 0) { %><tr><td colspan="5" class="empty-state">مفيش سلف مسجلة</td></tr><% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>قبض راتب جديد</h2>
+      <form method="POST" action="/payroll/<%= employee.id %>/pay" class="form-grid" onsubmit="return confirm('تأكيد قبض الراتب؟ كل السلف الغير مسددة هتتخصم تلقائيًا.');">
+        <div class="field"><label>من تاريخ (بداية الفترة) *</label><input type="date" name="period_start" required></div>
+        <div class="field"><label>إلى تاريخ (نهاية الفترة) *</label><input type="date" name="period_end" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
+        <div class="field"><label>بونص / حافز (اختياري)</label><input type="number" step="0.01" name="bonus" value="0"></div>
+        <div class="field"><label>خصومات إضافية (اختياري، غير السلف)</label><input type="number" step="0.01" name="other_deductions" value="0"></div>
+        <div class="field"><label>ملاحظات</label><input type="text" name="notes"></div>
+        <button type="submit" class="btn">قبض الراتب</button>
+      </form>
+      <p style="color:var(--text-muted); font-size:13px; margin-top:8px;">
+        الصافي المتوقع = الراتب الأساسي (<span class="mono"><%= Number(employee.base_salary).toFixed(2) %></span>)
+        + البونص − الخصومات الإضافية − السلف الغير مسددة (<span class="mono err"><%= unsettledAdvances.toFixed(2) %></span>).
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>سجل قبض الرواتب</h2>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>الفترة</th><th>الأساسي</th><th>بونص</th><th>خصومات</th><th>سلف مخصومة</th><th>الصافي المدفوع</th><th></th></tr></thead>
+          <tbody>
+            <% paymentsHistory.forEach(p => { %>
+              <tr>
+                <td><%= new Date(p.period_start).toLocaleDateString('ar-EG') %> - <%= new Date(p.period_end).toLocaleDateString('ar-EG') %></td>
+                <td class="mono"><%= Number(p.base_salary).toFixed(2) %></td>
+                <td class="mono"><%= Number(p.bonus).toFixed(2) %></td>
+                <td class="mono"><%= Number(p.other_deductions).toFixed(2) %></td>
+                <td class="mono"><%= Number(p.advances_deducted).toFixed(2) %></td>
+                <td class="mono"><%= Number(p.net_paid).toFixed(2) %></td>
+                <td><a href="/payroll/<%= employee.id %>/report/<%= p.id %>" target="_blank" class="btn-sm">🖨 إيصال</a></td>
+              </tr>
+            <% }) %>
+            <% if (paymentsHistory.length === 0) { %><tr><td colspan="7" class="empty-state">مفيش رواتب مقبوضة لسه</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
