@@ -65,19 +65,31 @@
         <h2>حسابات الموظفين</h2>
         <p style="color:var(--text-muted); font-size:13px; margin-top:-8px; margin-bottom:16px;">
           ضيف حساب لكل صيدلي/كاشير بيشتغل في الصيدلية. الصيدلي والكاشير بيدخلوا بس على الكاشير والمبيعات والأصناف.
+          لو ربطت الحساب بموظف من صفحة "الموظفين والرواتب"، هيتسجله حضور وانصراف تلقائي لما يفتح ويقفل الوردية.
         </p>
 
         <% if (employees.length === 0) { %>
           <div class="empty-state">مفيش موظفين مسجلين لسه</div>
         <% } else { %>
           <table>
-            <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th></th></tr></thead>
+            <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>مرتبط بموظف رواتب</th><th></th></tr></thead>
             <tbody>
               <% employees.forEach(emp => { %>
                 <tr>
                   <td data-label="الاسم"><%= emp.full_name || '-' %></td>
                   <td class="mono" data-label="اسم المستخدم"><%= emp.username %></td>
                   <td data-label="الدور"><%= emp.role === 'pharmacist' ? 'صيدلي' : 'كاشير' %></td>
+                  <td data-label="مرتبط بموظف رواتب">
+                    <form action="/settings/employees/<%= emp.id %>/link" method="POST" style="display:flex; gap:6px;">
+                      <select name="employee_id" style="min-width:130px;">
+                        <option value="">بدون ربط</option>
+                        <% payrollEmployees.forEach(pe => { %>
+                          <option value="<%= pe.id %>" <%= emp.employee_id === pe.id ? 'selected' : '' %>><%= pe.name %></option>
+                        <% }) %>
+                      </select>
+                      <button class="btn-ghost-sm" type="submit">حفظ</button>
+                    </form>
+                  </td>
                   <td style="display:flex; gap:6px; flex-wrap:wrap;" data-label="إجراءات">
                     <form action="/settings/employees/<%= emp.id %>/reset-password" method="POST" style="display:flex; gap:6px;" onsubmit="return confirm('تأكيد تغيير الباسورد؟')">
                       <input type="password" name="new_password" placeholder="باسورد جديد" required minlength="6" style="width:130px;">
@@ -100,6 +112,12 @@
           <select name="role" style="flex:1; min-width:120px;">
             <option value="cashier">كاشير</option>
             <option value="pharmacist">صيدلي</option>
+          </select>
+          <select name="employee_id" style="flex:1; min-width:160px;">
+            <option value="">ربط بموظف رواتب (اختياري)</option>
+            <% payrollEmployees.forEach(pe => { %>
+              <option value="<%= pe.id %>"><%= pe.name %></option>
+            <% }) %>
           </select>
           <button type="submit" class="btn" style="white-space:nowrap;">إضافة موظف</button>
         </form>
