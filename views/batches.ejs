@@ -52,8 +52,13 @@
         <h2>استلام تشغيلة جديدة</h2>
         <form action="/products/batches/add" method="POST">
           <div class="field">
-            <label>الصنف</label>
-            <select name="medicine_id" required>
+            <label style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <span>الصنف</span>
+              <a href="/products" target="_blank" rel="noopener" class="btn-ghost-sm" style="white-space:nowrap;">
+                ➕ مش لاقي الصنف؟ أضف صنف جديد
+              </a>
+            </label>
+            <select name="medicine_id" id="batchMedicineSelect" required>
               <option value="">-- اختر الصنف --</option>
               <% medicines.forEach(m => { %>
                 <option value="<%= m.id %>"><%= m.name %></option>
@@ -91,6 +96,9 @@
         </form>
         <p style="color:var(--text-muted); font-size:13px; margin-top:12px;">
           عند التسجيل: مخزون الصنف ومتوسط سعر التكلفة بيتحدّثوا تلقائيًا، والبيع بعد كده بيتم بنظام "الأقرب صلاحية يتصرف الأول" (FEFO).
+        </p>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">
+          فتحنا صفحة إضافة الصنف في تاب جديد عشان الفورم اللي انت بتملاه هنا (المورد، الكمية، تاريخ الصلاحية...) ميضيعش. بعد ما تضيف الصنف، رجّع لتاب الصفحة دي واعمل تحديث (F5) عشان يظهرلك في القائمة.
         </p>
       </div>
     </div>
