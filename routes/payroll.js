@@ -14,6 +14,22 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// جدول shop_settings مش موجود في قاعدة البيانات — بيانات المحل متخزنة
+// في جدول settings بنظام key/value (زي ما هو مستخدم في routes/pos.js).
+// الدالة دي بتجيبها وبتبنيها كـ object بنفس الشكل اللي الـ views بتستخدمه (shop.pharmacy_name).
+async function getShopSettings() {
+  const rows = await query(`SELECT key, value FROM settings`);
+  const map = {};
+  for (const row of rows) {
+    map[row.key] = row.value;
+  }
+  return {
+    pharmacy_name: map.pharmacy_name || null,
+    phone: map.pharmacy_phone || null,
+    address: map.pharmacy_address || null
+  };
+}
+
 // ============ قائمة الموظفين ============
 router.get('/', async (req, res, next) => {
   try {
@@ -253,9 +269,9 @@ router.get('/:id/report/:paymentId', async (req, res, next) => {
       [req.params.paymentId]
     );
 
-    const shop = await queryOne('SELECT * FROM shop_settings WHERE id = 1');
+    const shop = await getShopSettings();
 
-    res.render('employee-report', { employee, payment, settledAdvances, shop: shop || {} });
+    res.render('employee-report', { employee, payment, settledAdvances, shop });
   } catch (err) {
     next(err);
   }
@@ -283,9 +299,9 @@ router.get('/:id/full-report', async (req, res, next) => {
       [req.params.id, from, to]
     );
 
-    const shop = await queryOne('SELECT * FROM shop_settings WHERE id = 1');
+    const shop = await getShopSettings();
 
-    res.render('employee-full-report', { employee, attendance, advancesList, paymentsList, from, to, shop: shop || {} });
+    res.render('employee-full-report', { employee, attendance, advancesList, paymentsList, from, to, shop });
   } catch (err) {
     next(err);
   }
