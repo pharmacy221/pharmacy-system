@@ -19,6 +19,7 @@ const shiftsRouter = require('./routes/shifts');
 const suppliersRouter = require('./routes/suppliers');
 const couponsRouter = require('./routes/coupons');
 const symptomSearchRoutes = require('./routes/symptom-search');
+const drugLookupRoutes = require('./routes/drug-lookup');
 const payrollRoutes = require('./routes/payroll');
 const expensesRoutes = require('./routes/expenses');
 
@@ -75,6 +76,7 @@ app.use('/shifts', shiftsRouter);
 app.use('/suppliers', suppliersRouter);
 app.use('/coupons', couponsRouter);
 app.use('/symptom-search', symptomSearchRoutes);
+app.use('/drug-lookup', drugLookupRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/expenses', expensesRoutes);
 
