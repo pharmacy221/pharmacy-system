@@ -28,8 +28,8 @@ async function main() {
     for (let i = 0; i < rows.length; i += BATCH) {
       const chunk = rows.slice(i, i + BATCH).filter((r) => clean(r.commercial_name_en));
       await client.query(
-        `INSERT INTO drug_reference (name_en, name_ar, scientific_name, manufacturer, drug_class, route, price_egp)
-         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::numeric[])`,
+        `INSERT INTO drug_reference (name_en, name_ar, scientific_name, manufacturer, drug_class, route, price_egp, barcode)
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::numeric[], $8::text[])`,
         [
           chunk.map((r) => clean(r.commercial_name_en)),
           chunk.map((r) => clean(r.commercial_name_ar)),
@@ -37,7 +37,8 @@ async function main() {
           chunk.map((r) => clean(r.manufacturer)),
           chunk.map((r) => clean(r.drug_class)),
           chunk.map((r) => clean(r.route)),
-          chunk.map((r) => (Number.isFinite(Number(r.price_egp)) ? Number(r.price_egp) : null))
+          chunk.map((r) => (Number.isFinite(Number(r.price_egp)) ? Number(r.price_egp) : null)),
+          chunk.map((r) => clean(r.barcode)) // اختياري: لو الملف فيه حقل barcode
         ]
       );
       process.stdout.write(`\r⏳ ${Math.min(i + BATCH, rows.length)} / ${rows.length}`);

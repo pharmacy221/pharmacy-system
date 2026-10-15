@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS drug_reference (
   price_egp NUMERIC(12,2)       -- سعر العلبة (جنيه)
 );
 
+ALTER TABLE drug_reference ADD COLUMN IF NOT EXISTS barcode TEXT;  -- باركود العلبة الأصلي (لو المصدر فيه)
+
 CREATE INDEX IF NOT EXISTS idx_drug_ref_sci ON drug_reference (scientific_name);
 CREATE INDEX IF NOT EXISTS idx_drug_ref_name_en ON drug_reference (lower(name_en));
 

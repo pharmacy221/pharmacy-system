@@ -5,6 +5,7 @@ const express = require('express');
 const { query, queryOne } = require('../db');
 const { requireLogin, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
+const { classifyDrug } = require('../lib/drug-form');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -81,6 +82,9 @@ router.get('/', async (req, res, next) => {
       }
     }
 
+    // نضيف شكل الدواء (زجاجة/علبة/شريط) لكل نتيجة عشان الواجهة تعرض الوحدة الصح
+    results = results.map((d) => ({ ...d, form: classifyDrug(d) }));
+
     res.render('drug-lookup', {
       q, alt, results, notReady, approx, limit: LIMIT,
       msg: req.query.msg || '',
@@ -97,11 +101,14 @@ router.get('/', async (req, res, next) => {
 router.post('/add', requireAdmin, async (req, res, next) => {
   try {
     const refId = parseInt(req.body.ref_id);
-    const unitsPerStrip = Math.max(parseInt(req.body.units_per_strip) || 1, 1);
-    const stripsPerBox = Math.max(parseInt(req.body.strips_per_box) || 1, 1);
-
     const ref = Number.isInteger(refId) ? await queryOne('SELECT * FROM drug_reference WHERE id = $1', [refId]) : null;
     if (!ref) return res.redirect('/drug-lookup?msg=notfound');
+
+    // الشكل بيتحدد من السيرفر مش من الفورم: شراب/زجاجة وعلبة = وحدة واحدة (مفيش حبات ولا شرائط)
+    const form = classifyDrug(ref);
+    const unitsPerStrip = form.single ? 1 : Math.max(parseInt(req.body.units_per_strip) || 1, 1);
+    const stripsPerBox = form.single ? 1 : Math.max(parseInt(req.body.strips_per_box) || 1, 1);
+    const barcode = (req.body.barcode || ref.barcode || '').trim() || null;
 
     const existing = await queryOne('SELECT id FROM medicines WHERE is_active = true AND lower(name) = lower($1)', [ref.name_en]);
     if (existing) return res.redirect('/products?q=' + encodeURIComponent(ref.name_en));
@@ -110,12 +117,17 @@ router.post('/add', requireAdmin, async (req, res, next) => {
     const perStrip = Math.round((box / stripsPerBox) * 100) / 100;
     const perUnit = Math.round((box / (unitsPerStrip * stripsPerBox)) * 100) / 100;
 
-    await query(
-      `INSERT INTO medicines (name, generic_name, category, manufacturer, units_per_strip, strips_per_box,
-                              sale_price_unit, sale_price_strip, sale_price_box, stock_units)
-       VALUES ($1, $2, 'أدوية', $3, $4, $5, $6, $7, $8, 0)`,
-      [ref.name_en, ref.scientific_name, ref.manufacturer, unitsPerStrip, stripsPerBox, perUnit, perStrip, box]
-    );
+    try {
+      await query(
+        `INSERT INTO medicines (name, generic_name, category, dosage_form, manufacturer, barcode, units_per_strip, strips_per_box,
+                                sale_price_unit, sale_price_strip, sale_price_box, stock_units)
+         VALUES ($1, $2, 'أدوية', $3, $4, $5, $6, $7, $8, $9, $10, 0)`,
+        [ref.name_en, ref.scientific_name, form.dosageForm, ref.manufacturer, barcode, unitsPerStrip, stripsPerBox, perUnit, perStrip, box]
+      );
+    } catch (err) {
+      if (err.code === '23505') return res.redirect('/drug-lookup?msg=barcode_dup&q=' + encodeURIComponent(ref.name_en)); // الباركود مستخدم لصنف تاني
+      throw err;
+    }
 
     await logActivity(req, { action: 'إضافة صنف من دليل الأدوية', entityType: 'medicine', details: { medicine_name: ref.name_en } });
     res.redirect('/products?q=' + encodeURIComponent(ref.name_en));

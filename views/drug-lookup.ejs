@@ -20,6 +20,10 @@
       <div class="card" style="border-color:var(--amber)">الصنف ده مش موجود في الدليل.</div>
     <% } %>
 
+    <% if (msg === 'barcode_dup') { %>
+      <div class="card" style="border-color:var(--amber)">الباركود ده مستخدم لصنف تاني في المخزون — اتأكد منه وجرّب تاني.</div>
+    <% } %>
+
     <div class="card">
       <form method="GET" action="/drug-lookup" style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
         <div class="field" style="flex:1; min-width:240px;">
@@ -67,7 +71,7 @@
           <table>
             <thead>
               <tr>
-                <th>الاسم</th><th>المادة الفعالة</th><th>الشركة</th><th>التصنيف</th><th>سعر العلبة</th><th>عندك</th>
+                <th>الاسم</th><th>المادة الفعالة</th><th>الشركة</th><th>التصنيف</th><th>السعر</th><th>عندك</th>
                 <% if (canAdd) { %><th>إضافة للمخزون</th><% } %>
               </tr>
             </thead>
@@ -77,6 +81,7 @@
                   <td data-label="الاسم">
                     <strong><%= d.name_ar || d.name_en %></strong>
                     <div style="color:var(--text-muted); font-size:12px; direction:ltr; text-align:right;"><%= d.name_en %></div>
+                    <% if (d.form.label) { %><span class="badge" style="margin-top:4px;"><%= d.form.label %></span><% } %>
                   </td>
                   <td style="font-size:12px; direction:ltr; text-align:right;" data-label="المادة الفعالة">
                     <% if (d.scientific_name) { %>
@@ -85,10 +90,10 @@
                   </td>
                   <td style="color:var(--text-muted); font-size:12px;" data-label="الشركة"><%= d.manufacturer || '—' %></td>
                   <td style="color:var(--text-muted); font-size:12px;" data-label="التصنيف"><%= d.drug_class || '—' %></td>
-                  <td class="mono" data-label="سعر العلبة"><%= d.price_egp != null ? Number(d.price_egp).toFixed(2) : '—' %></td>
+                  <td class="mono" data-label="السعر"><%= d.price_egp != null ? Number(d.price_egp).toFixed(2) : '—' %><% if (d.form.label) { %> <span style="color:var(--text-muted); font-size:11px;">/ <%= d.form.label %></span><% } %></td>
                   <td data-label="عندك">
                     <% if (d.inv_id) { %>
-                      <a href="/products?q=<%= encodeURIComponent(d.name_en) %>" class="badge badge-matched">موجود (<%= d.stock_units %> حبة)</a>
+                      <a href="/products?q=<%= encodeURIComponent(d.name_en) %>" class="badge badge-matched">موجود (<%= d.stock_units %> <%= d.form.label || 'حبة' %>)</a>
                     <% } else { %>
                       <span style="color:var(--text-muted)">—</span>
                     <% } %>
@@ -98,10 +103,15 @@
                       <% if (!d.inv_id) { %>
                         <form method="POST" action="/drug-lookup/add" style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
                           <input type="hidden" name="ref_id" value="<%= d.id %>">
-                          <input type="number" name="units_per_strip" value="1" min="1" style="width:56px;" title="عدد الحبات في الشريط">
-                          <span style="font-size:11px; color:var(--text-muted)">حبة ×</span>
-                          <input type="number" name="strips_per_box" value="1" min="1" style="width:56px;" title="عدد الشرائط في العلبة">
-                          <span style="font-size:11px; color:var(--text-muted)">شريط</span>
+                          <% if (d.form.single) { %>
+                            <span style="font-size:12px; color:var(--text-muted)">1 <%= d.form.label %></span>
+                          <% } else { %>
+                            <input type="number" name="units_per_strip" value="1" min="1" style="width:56px;" title="عدد الحبات في الشريط">
+                            <span style="font-size:11px; color:var(--text-muted)">حبة ×</span>
+                            <input type="number" name="strips_per_box" value="1" min="1" style="width:56px;" title="عدد الشرائط في العلبة">
+                            <span style="font-size:11px; color:var(--text-muted)">شريط</span>
+                          <% } %>
+                          <input type="text" name="barcode" value="<%= d.barcode || '' %>" placeholder="باركود (اختياري)" style="width:130px; direction:ltr;" title="امسح باركود العلبة الأصلي لو عندك">
                           <button type="submit" class="btn btn-sm">إضافة</button>
                         </form>
                       <% } %>
