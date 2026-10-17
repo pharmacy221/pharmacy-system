@@ -48,21 +48,22 @@
     <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
 
     <div class="card" style="margin-bottom:16px;">
-      <form method="GET" action="/products" style="display:flex; gap:8px; flex-wrap:wrap;">
-        <input type="text" name="q" value="<%= searchQuery %>" placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود أو السريال أو الحالة المرضية..." style="flex:1; min-width:220px;">
+      <form method="GET" action="/products" id="searchForm" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input type="search" name="q" id="q" value="<%= searchQuery %>" autocomplete="off" autofocus placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود أو السريال أو الشركة أو الحالة... (النتايج بتظهر وانت بتكتب)" style="flex:1; min-width:220px;">
         <button type="submit" class="btn-outline btn-sm">بحث</button>
-        <% if (searchQuery) { %><a href="/products" class="btn-ghost-sm">إلغاء</a><% } %>
-        <select name="form" style="max-width:160px;" onchange="this.form.submit()">
+        <button type="button" id="clearSearch" class="btn-ghost-sm" style="<%= searchQuery ? '' : 'display:none;' %>">مسح</button>
+        <select name="form" style="max-width:160px;">
           <option value="">كل الأنواع</option>
           <option value="none" <%= pg.form === 'none' ? 'selected' : '' %>>غير مصنّف</option>
           <% formKinds.forEach(k => { %><option value="<%= k.key %>" <%= pg.form === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %>
         </select>
-        <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" name="instock" value="1" <%= pg.instock ? 'checked' : '' %> onchange="this.form.submit()"> المتاح فقط</label>
+        <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" name="instock" value="1" <%= pg.instock ? 'checked' : '' %>> المتاح فقط</label>
         <a href="/products/batches" class="btn-ghost-sm">📦 التشغيلات والصلاحية</a>
         <a href="/symptom-search" class="btn-ghost-sm">🩺 بحث بالحالة</a>
       </form>
     </div>
 
+    <div id="groupChipsWrap">
     <% if (groups && groups.length) {
          const gqs = (k) => '?' + new URLSearchParams({ q: searchQuery || '', form: k, instock: pg.instock ? '1' : '' }).toString();
          const allCount = groups.reduce((a, g) => a + g.count, 0); %>
@@ -73,12 +74,13 @@
         <% }) %>
       </div>
     <% } %>
+    </div>
 
     <div class="two-col">
-      <div class="card">
+      <div class="card" id="listCard">
         <h2>الأصناف (<%= pg.total != null ? pg.total : medicines.length %>)</h2>
         <% if (medicines.length === 0) { %>
-          <div class="empty-state">مفيش أصناف مضافة لسه</div>
+          <div class="empty-state"><%= searchQuery ? 'مفيش نتايج للبحث ده، جرّب كلمة تانية أو جزء من الاسم' : 'مفيش أصناف مضافة لسه' %></div>
         <% } else { %>
           <table>
             <thead>
@@ -86,7 +88,7 @@
             </thead>
             <tbody>
               <% let lastGroup = null; medicines.forEach(p => { %>
-                <% if (!pg.form && (p.form_kind || 'none') !== lastGroup) { lastGroup = p.form_kind || 'none'; %>
+                <% if (!pg.form && !searchQuery && (p.form_kind || 'none') !== lastGroup) { lastGroup = p.form_kind || 'none'; %>
                   <tr class="group-row"><td colspan="9"><%= formLabel(p) %></td></tr>
                 <% } %>
                 <tr>
@@ -115,8 +117,8 @@
                   </td>
                 </tr>
                 <tr id="edit-<%= p.id %>" class="edit-row">
-                  <td colspan="8">
-                    <form action="/products/<%= p.id %>/update" method="POST" class="form-grid" style="grid-template-columns: repeat(4, 1fr); align-items:end;">
+                  <td colspan="9">
+                    <form action="/products/<%= p.id %>/update" data-kindform data-cur-kind="<%= p.form_kind || '' %>" method="POST" class="form-grid" style="grid-template-columns: repeat(4, 1fr); align-items:end;">
                       <div class="field" style="margin-bottom:0;">
                         <label>الاسم التجاري</label>
                         <input type="text" name="name" id="name-edit-<%= p.id %>" value="<%= p.name %>" required>
@@ -189,31 +191,46 @@
                         <input type="date" id="expiry-edit-<%= p.id %>">
                       </div>
                       <div class="field" style="margin-bottom:0;">
-                        <label>عدد الحبات بالشريط</label>
-                        <input type="number" min="1" name="units_per_strip" value="<%= p.units_per_strip %>">
-                      </div>
-                      <div class="field" style="margin-bottom:0;">
-                        <label>عدد الشرائط بالعلبة</label>
-                        <input type="number" min="1" name="strips_per_box" value="<%= p.strips_per_box %>">
-                      </div>
-                      <div class="field" style="margin-bottom:0;">
-                        <label>سعر بيع الحبة</label>
+                        <label data-tpl="سعر بيع {u}">سعر بيع الحبة</label>
                         <input type="number" step="0.01" name="sale_price_unit" id="price-edit-<%= p.id %>" value="<%= p.sale_price_unit %>" required>
                       </div>
                       <div class="field" style="margin-bottom:0;">
+                        <label data-tpl="سعر تكلفة {u} (اختياري)">سعر تكلفة الحبة (اختياري)</label>
+                        <input type="number" step="0.01" name="cost_price_unit" value="<%= p.cost_price_unit %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;" data-f="units">
+                        <label data-units-label>عدد الحبات بالشريط (اختياري)</label>
+                        <input type="number" min="1" name="units_per_strip" value="<%= p.units_per_strip %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;" data-f="strips">
+                        <label>عدد الشرائط بالعلبة (اختياري)</label>
+                        <input type="number" min="1" name="strips_per_box" value="<%= p.strips_per_box %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;" data-f="pstrip">
                         <label>سعر بيع الشريط (اختياري)</label>
                         <input type="number" step="0.01" name="sale_price_strip" value="<%= p.sale_price_strip || '' %>">
                       </div>
-                      <div class="field" style="margin-bottom:0;">
+                      <div class="field" style="margin-bottom:0;" data-f="pbox">
                         <label>سعر بيع العلبة (اختياري)</label>
                         <input type="number" step="0.01" name="sale_price_box" value="<%= p.sale_price_box || '' %>">
                       </div>
-                      <div class="field" style="margin-bottom:0;">
-                        <label>سعر تكلفة الحبة</label>
-                        <input type="number" step="0.01" name="cost_price_unit" value="<%= p.cost_price_unit %>">
+                      <% const ss = stockSplit(p); %>
+                      <input type="hidden" name="stock_dirty" value="0">
+                      <div class="field" style="margin-bottom:0;" data-f="sbox">
+                        <label data-stock-box>عدد العلب في المخزن</label>
+                        <input type="number" min="0" name="stock_box_qty" class="stock-in" value="<%= ss.box %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;" data-f="sstrip">
+                        <label data-stock-strip>عدد الشرائط في المخزن</label>
+                        <input type="number" min="0" name="stock_strip_qty" class="stock-in" value="<%= ss.strip %>">
                       </div>
                       <div class="field" style="margin-bottom:0;">
-                        <label>حد التنبيه (بالحبة)</label>
+                        <label data-stock-unit>حبات سايبة</label>
+                        <input type="number" min="0" name="stock_unit_qty" class="stock-in" value="<%= ss.unit %>">
+                        <small data-stock-total style="color:var(--text-muted);"></small>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label data-tpl="حد التنبيه ({bu})">حد التنبيه (بالحبة)</label>
                         <input type="number" name="min_stock_units" value="<%= p.min_stock_units %>">
                       </div>
                       <div class="field" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
@@ -238,7 +255,7 @@
             </tbody>
           </table>
           <% if (pg.pages > 1) { const qs = (n) => '?' + new URLSearchParams({ q: searchQuery || '', form: pg.form || '', instock: pg.instock ? '1' : '', page: n }).toString(); %>
-            <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:14px;">
+            <div class="pager" style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:14px;">
               <% if (pg.page > 1) { %><a class="btn-ghost-sm" href="<%= qs(pg.page - 1) %>">السابق</a><% } %>
               <span style="color:var(--text-muted); font-size:13px;">صفحة <%= pg.page %> من <%= pg.pages %></span>
               <% if (pg.page < pg.pages) { %><a class="btn-ghost-sm" href="<%= qs(pg.page + 1) %>">التالي</a><% } %>
@@ -249,7 +266,7 @@
 
       <div class="card">
         <h2>إضافة صنف جديد</h2>
-        <form action="/products/add" method="POST" class="form-grid" style="grid-template-columns: repeat(2, 1fr);">
+        <form action="/products/add" method="POST" data-kindform data-cur-kind="" class="form-grid" style="grid-template-columns: repeat(2, 1fr);">
           <div class="field">
             <label>الاسم التجاري</label>
             <input type="text" name="name" id="name-add" required placeholder="مثال: بانادول اكسترا">
@@ -325,35 +342,44 @@
             <input type="date" id="expiry-add">
           </div>
           <div class="field">
-            <label>عدد الحبات بالشريط</label>
-            <input type="number" min="1" name="units_per_strip" value="1">
-          </div>
-          <div class="field">
-            <label>عدد الشرائط بالعلبة</label>
-            <input type="number" min="1" name="strips_per_box" value="1">
-          </div>
-          <div class="field">
-            <label>سعر بيع الحبة</label>
+            <label data-tpl="سعر بيع {u}">سعر بيع الحبة</label>
             <input type="number" step="0.01" name="sale_price_unit" id="price-add" required placeholder="0.00">
           </div>
           <div class="field">
+            <label data-tpl="سعر تكلفة {u} (اختياري)">سعر تكلفة الحبة (اختياري)</label>
+            <input type="number" step="0.01" name="cost_price_unit" placeholder="0.00">
+          </div>
+          <div class="field" data-f="units">
+            <label data-units-label>عدد الحبات بالشريط (اختياري)</label>
+            <input type="number" min="1" name="units_per_strip" value="1">
+          </div>
+          <div class="field" data-f="strips">
+            <label>عدد الشرائط بالعلبة (اختياري)</label>
+            <input type="number" min="1" name="strips_per_box" value="1">
+          </div>
+          <div class="field" data-f="pstrip">
             <label>سعر بيع الشريط (اختياري، بيتحسب تلقائي لو فاضي)</label>
             <input type="number" step="0.01" name="sale_price_strip" placeholder="0.00">
           </div>
-          <div class="field">
+          <div class="field" data-f="pbox">
             <label>سعر بيع العلبة (اختياري)</label>
             <input type="number" step="0.01" name="sale_price_box" placeholder="0.00">
           </div>
-          <div class="field">
-            <label>سعر تكلفة الحبة</label>
-            <input type="number" step="0.01" name="cost_price_unit" placeholder="0.00">
+          <div class="field" data-f="sbox">
+            <label data-stock-box>عدد العلب (المخزون الافتتاحي)</label>
+            <input type="number" min="0" name="stock_box_qty" class="stock-in" value="0">
+          </div>
+          <div class="field" data-f="sstrip">
+            <label data-stock-strip>عدد الشرائط في المخزن</label>
+            <input type="number" min="0" name="stock_strip_qty" class="stock-in" value="0">
           </div>
           <div class="field">
-            <label>المخزون الافتتاحي (بالحبة)</label>
-            <input type="number" name="stock_units" value="0">
+            <label data-stock-unit>حبات سايبة</label>
+            <input type="number" min="0" name="stock_unit_qty" class="stock-in" value="0">
+            <small data-stock-total style="color:var(--text-muted);"></small>
           </div>
           <div class="field">
-            <label>حد التنبيه (بالحبة)</label>
+            <label data-tpl="حد التنبيه ({bu})">حد التنبيه (بالحبة)</label>
             <input type="number" name="min_stock_units" value="10">
           </div>
           <div class="field" style="display:flex; align-items:center; gap:6px;">
@@ -436,24 +462,14 @@
       return 'SN-' + timePart + '-' + randPart;
     }
 
-    document.querySelectorAll('.btn-cam[data-gen-barcode]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const input = document.getElementById(btn.dataset.genBarcode);
-        if (input) {
-          input.value = generateBarcodeNumber();
-          playBeep();
-        }
-      });
-    });
-
-    document.querySelectorAll('.btn-cam[data-gen-serial]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const input = document.getElementById(btn.dataset.genSerial);
-        if (input) {
-          input.value = generateSerialNumber();
-          playBeep();
-        }
-      });
+    // الأزرار بتشتغل بالتفويض (delegation) عشان تفضل شغالة بعد تحديث النتايج أثناء البحث
+    document.addEventListener('click', (e) => {
+      const gb = e.target.closest('.btn-cam[data-gen-barcode]');
+      if (gb) { const i = document.getElementById(gb.dataset.genBarcode); if (i) { i.value = generateBarcodeNumber(); playBeep(); } return; }
+      const gs = e.target.closest('.btn-cam[data-gen-serial]');
+      if (gs) { const i = document.getElementById(gs.dataset.genSerial); if (i) { i.value = generateSerialNumber(); playBeep(); } return; }
+      const cb = e.target.closest('.btn-cam[data-target]');
+      if (cb) startCamera(cb.dataset.target);
     });
 
     // ============ مسح الباركود/السريال بكاميرا الموبايل/الجهاز ============
@@ -514,10 +530,124 @@
       cameraTargetInput = null;
     }
 
-    document.querySelectorAll('.btn-cam[data-target]').forEach(btn => {
-      btn.addEventListener('click', () => startCamera(btn.dataset.target));
-    });
     closeCameraBtn.addEventListener('click', stopCamera);
+
+    // ============ الحقول حسب نوع المنتج ============
+    // زجاجة/كريم/شراب...: سعر واحد بس (من غير حبة/شريط)  |  حقن/لبوس/أكياس: وحدات بالعلبة  |  حبوب/كبسول: حبة/شريط/علبة
+    const FORM_META = <%- JSON.stringify(formMeta) %>;
+    function applyKind(form) {
+      const sel = form.querySelector('select[name="form_kind"]');
+      const kind = (sel && sel.value) || form.dataset.curKind || '';
+      const m = FORM_META[kind] || null; // null = صنف عادي/قديم: كل الحقول ظاهرة (واختيارية)
+      const show = { units: !m || m.counted, strips: !m || m.strip, pstrip: !m || m.strip, pbox: !m || m.counted,
+                     sbox: !m || m.counted, sstrip: !m || m.strip };
+      const unit = m ? m.unit : 'حبة';
+      form.querySelectorAll('[data-f]').forEach((w) => {
+        const on = show[w.dataset.f];
+        w.style.display = on ? '' : 'none';
+        // الحقل المخفي بيتعطّل عشان مايتبعتش (السيرفر بيحط له القيمة الافتراضية)
+        w.querySelectorAll('input').forEach((i) => { i.disabled = !on; });
+      });
+      form.querySelectorAll('[data-tpl]').forEach((l) => {
+        l.textContent = l.dataset.tpl.replace('{u}', 'ال' + unit).replace('{bu}', 'بال' + unit);
+      });
+      const sl = form.querySelector('[data-stock-unit]');
+      if (sl) sl.textContent = (m && !m.counted) ? 'الكمية في المخزن (' + unit + ')' : unit + ' سايبة (غير كاملة)';
+      updateStockTotal(form);
+      const ul = form.querySelector('[data-units-label]');
+      if (ul) ul.textContent = (m && m.counted && !m.strip) ? 'عدد الوحدات بالعلبة (اختياري)' : 'عدد الحبات بالشريط (اختياري)';
+    }
+    // إجمالي المخزون بالوحدة الصغرى (بيظهر تحت خانة الوحدات السايبة لو الصنف ليه تعبئة)
+    function updateStockTotal(form) {
+      const el = form.querySelector('[data-stock-total]');
+      if (!el) return;
+      const val = (name) => { const i = form.querySelector('[name="' + name + '"]'); return i && !i.disabled ? Math.max(parseInt(i.value) || 0, 0) : 0; };
+      const ups = Math.max(val('units_per_strip'), 1), spb = Math.max(val('strips_per_box'), 1);
+      const total = val('stock_box_qty') * ups * spb + val('stock_strip_qty') * ups + val('stock_unit_qty');
+      const sel = form.querySelector('select[name="form_kind"]');
+      const m = FORM_META[(sel && sel.value) || form.dataset.curKind || ''] || null;
+      el.textContent = (m && !m.counted) ? '' : 'الإجمالي: ' + total + ' ' + (m ? m.unit : 'حبة');
+    }
+    document.addEventListener('input', (e) => {
+      const form = e.target.form;
+      if (!form || !form.matches('form[data-kindform]')) return;
+      if (e.target.classList.contains('stock-in')) {
+        const d = form.querySelector('input[name="stock_dirty"]');
+        if (d) d.value = '1';
+      }
+      if (e.target.classList.contains('stock-in') || /^(units_per_strip|strips_per_box)$/.test(e.target.name)) updateStockTotal(form);
+    });
+    function applyAllKinds() { document.querySelectorAll('form[data-kindform]').forEach(applyKind); }
+    document.addEventListener('change', (e) => {
+      if (e.target.matches('select[name="form_kind"]') && e.target.form) applyKind(e.target.form);
+    });
+    applyAllKinds();
+
+    // ============ بحث مباشر (بيتحدّث وانت بتكتب من غير ريفريش) ============
+    const searchForm = document.getElementById('searchForm');
+    const qInput = document.getElementById('q');
+    const clearBtn = document.getElementById('clearSearch');
+    let searchTimer = null, searchCtrl = null;
+
+    function currentUrl(page) {
+      const p = new URLSearchParams();
+      const q = qInput.value.trim();
+      if (q) p.set('q', q);
+      if (searchForm.elements.form.value) p.set('form', searchForm.elements.form.value);
+      if (searchForm.elements.instock.checked) p.set('instock', '1');
+      if (page > 1) p.set('page', page);
+      const qs = p.toString();
+      return '/products' + (qs ? '?' + qs : '');
+    }
+
+    async function runSearch(url) {
+      if (searchCtrl) searchCtrl.abort();
+      searchCtrl = new AbortController();
+      const card = document.getElementById('listCard');
+      card.style.opacity = '0.55';
+      try {
+        const r = await fetch(url, { signal: searchCtrl.signal, headers: { 'X-Requested-With': 'fetch' } });
+        if (!r.ok) throw new Error('bad status');
+        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+        const newCard = doc.getElementById('listCard');
+        const newChips = doc.getElementById('groupChipsWrap');
+        if (!newCard || !newChips) throw new Error('bad page');
+        card.replaceWith(newCard);
+        document.getElementById('groupChipsWrap').replaceWith(newChips);
+        history.replaceState(null, '', url);
+        applyAllKinds();
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        card.style.opacity = '';
+        location.href = url; // لو حصلت مشكلة نرجع للتحميل العادي
+      }
+    }
+
+    function syncControlsFromUrl(href) {
+      const sp = new URL(href, location.origin).searchParams;
+      searchForm.elements.form.value = sp.get('form') || '';
+      searchForm.elements.instock.checked = sp.get('instock') === '1';
+    }
+
+    qInput.addEventListener('input', () => {
+      clearBtn.style.display = qInput.value ? '' : 'none';
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => runSearch(currentUrl()), 250);
+    });
+    searchForm.addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(searchTimer); runSearch(currentUrl()); });
+    searchForm.elements.form.addEventListener('change', () => runSearch(currentUrl()));
+    searchForm.elements.instock.addEventListener('change', () => runSearch(currentUrl()));
+    clearBtn.addEventListener('click', () => { qInput.value = ''; clearBtn.style.display = 'none'; runSearch(currentUrl()); qInput.focus(); });
+    // الأقسام (chips) والترقيم من غير تحميل الصفحة
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('#groupChipsWrap .group-chips a, #listCard .pager a');
+      if (!a) return;
+      e.preventDefault();
+      syncControlsFromUrl(a.href);
+      runSearch(a.href);
+    });
+    // Esc يمسح البحث وانت جوه الخانة
+    qInput.addEventListener('keydown', (e) => { if (e.key === 'Escape' && qInput.value) { e.preventDefault(); clearBtn.click(); } });
 
     // ============ طباعة ملصق الباركود (اسم الصيدلية + السعر + الصلاحية + السريال) ============
     let barcodeLibLoaded = false;
