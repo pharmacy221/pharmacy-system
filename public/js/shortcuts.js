@@ -16,7 +16,7 @@
     else if (/^F([1-9]|1[0-2])$/.test(e.key)) k = e.key;
     else if (code === 'Space') k = 'Space';
     else if (e.key === 'Enter' || code === 'NumpadEnter') k = 'Enter';
-    else if (['Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown'].indexOf(e.key) !== -1) k = e.key;
+    else if (['Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.key) !== -1) k = e.key;
     if (!k) return null;
     var mods = [];
     if (e.ctrlKey) mods.push('Ctrl');
@@ -30,6 +30,12 @@
     if (!t) return false;
     var tag = (t.tagName || '').toUpperCase();
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+  }
+
+  function textLike(t) {
+    if (!t || (t.tagName || '').toUpperCase() !== 'INPUT') return false;
+    var ty = (t.getAttribute('type') || 'text').toLowerCase();
+    return ty === 'text' || ty === 'search';
   }
 
   function focusSearch() {
@@ -54,7 +60,10 @@
     for (var key in api.keys) { if (api.keys[key] && api.keys[key] === combo) { id = key; break; } }
     if (!id) return;
     // وإحنا بنكتب في خانة: بس الاختصارات اللي فيها Ctrl/Alt أو F1-F12 تشتغل
-    if (isTyping(e.target) && !/(?:^|\+)(?:Ctrl|Alt)\+|(?:^|\+)F\d+$/.test(combo)) return;
+    // والأسهم كمان بتشتغل في خانات النص العادية (الإجراء نفسه بيقرر ينفذ ولا يسيب السهم لحاله)،
+    // لكن مش جوه الأرقام/القوائم/النصوص الطويلة عشان السهم هناك له وظيفته
+    var arrow = /(?:^|\+)Arrow(?:Up|Down|Left|Right)$/.test(combo);
+    if (isTyping(e.target) && !/(?:^|\+)(?:Ctrl|Alt)\+|(?:^|\+)F\d+$/.test(combo) && !(arrow && textLike(e.target))) return;
 
     var fn = handlers[id];
     if (!fn && id === 'search') fn = focusSearch;
@@ -69,7 +78,10 @@
 
   // بيعرض الاختصار جنب الأزرار: <kbd data-sc="pos_clear"></kbd> ، وبيخفي الغلاف <span data-sc-wrap="..."> لو مفيش اختصار
   api.paint = function () {
-    document.querySelectorAll('[data-sc]').forEach(function (el) { el.textContent = api.keys[el.getAttribute('data-sc')] || ''; });
+    var sym = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+    document.querySelectorAll('[data-sc]').forEach(function (el) {
+      el.textContent = (api.keys[el.getAttribute('data-sc')] || '').replace(/Arrow(Up|Down|Left|Right)/, function (m) { return sym[m]; });
+    });
     document.querySelectorAll('[data-sc-wrap]').forEach(function (el) {
       el.style.display = api.keys[el.getAttribute('data-sc-wrap')] ? '' : 'none';
     });

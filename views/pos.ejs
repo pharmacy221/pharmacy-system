@@ -14,7 +14,7 @@
       flex: 1; font-size: 18px; padding: 12px 16px; border-radius: 10px;
       background: var(--bg); border: 2px solid var(--accent); color: var(--text);
     }
-    .searchbar input#q:focus { outline: none; box-shadow: 0 0 0 3px rgba(0,217,163,.2); }
+    .searchbar input#q:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
     .btn-icon {
       width: 52px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2);
       color: var(--accent); cursor: pointer; display: flex; align-items: center; justify-content: center;
@@ -32,7 +32,7 @@
     table.t th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-muted); font-size: 12px; padding: 8px 10px; text-align: right; z-index: 1; }
     table.t td { padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: middle; }
     table.t tr.res { cursor: pointer; }
-    table.t tr.res:hover, table.t tr.res.sel { background: rgba(0,217,163,.08); }
+    table.t tr.res:hover, table.t tr.res.sel { background: var(--accent-softer); }
     table.t tr.res.out { opacity: .55; }
     .pname { font-weight: 700; }
     .psub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
@@ -42,19 +42,20 @@
     .stock-ok { color: var(--accent); font-weight: 700; } .stock-low { color: var(--amber); font-weight: 700; } .stock-out { color: var(--danger); font-weight: 700; }
     .lvl-btns { display: flex; gap: 6px; flex-wrap: wrap; }
     .lvl {
-      border: 1px solid var(--accent); background: rgba(0,217,163,.12); color: var(--accent);
+      border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent);
       border-radius: 8px; padding: 4px 10px; cursor: pointer; font-family: var(--sans); font-size: 12px; font-weight: 700; line-height: 1.3;
     }
     .lvl small { display: block; font-family: var(--mono); font-weight: 500; color: var(--text); font-size: 11px; }
-    .lvl:hover { background: var(--accent); color: #06251d; } .lvl:hover small { color: #06251d; }
+    .lvl:hover { background: var(--accent); color: var(--on-accent); } .lvl:hover small { color: var(--on-accent); }
     .lvl:disabled { opacity: .35; cursor: not-allowed; }
     .link-btn { background: none; border: none; color: var(--amber); cursor: pointer; font-family: var(--sans); font-size: 12px; text-decoration: underline; }
 
     /* ---- السلة ---- */
     .cart-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .cart-title h2 { margin: 0; }
+    #cartBody tr.sel-line { background: var(--accent-soft); box-shadow: inset -3px 0 0 var(--accent); }
     .qty { display: inline-flex; align-items: center; gap: 4px; }
-    .qty button { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--accent); background: rgba(0,217,163,.12); color: var(--accent); cursor: pointer; font-size: 16px; font-weight: 700; }
+    .qty button { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; font-size: 16px; font-weight: 700; }
     .qty input { width: 52px; text-align: center; padding: 5px 2px; font-family: var(--mono); }
     select.unit-sel { width: auto; padding: 5px 8px; }
     .warn { color: var(--danger); font-size: 11px; }
@@ -71,7 +72,7 @@
     .coupon-status { font-size: 12px; margin-top: 4px; } .coupon-status.ok { color: var(--accent); } .coupon-status.err { color: var(--danger); }
     .pay-tabs { display: flex; gap: 6px; }
     .pay-tabs button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font-family: var(--sans); font-weight: 700; }
-    .pay-tabs button.on { background: var(--accent); color: #06251d; border-color: var(--accent); }
+    .pay-tabs button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
     .checkout { width: 100%; padding: 14px; font-size: 17px; margin-top: 10px; }
     .shift-warn { margin-bottom: 14px; }
 
@@ -105,6 +106,7 @@
             <span><kbd>↑</kbd><kbd>↓</kbd> تنقل</span>
             <span><kbd>Enter</kbd> إضافة</span>
             <span><kbd>Ctrl+Enter</kbd> <span data-sc-wrap="pos_checkout" style="display:inline"><kbd data-sc="pos_checkout"></kbd> </span>إتمام البيع</span>
+            <span data-sc-wrap="pos_qty_up"><kbd data-sc="pos_qty_up"></kbd><kbd data-sc="pos_qty_down"></kbd> زيادة/تقليل الكمية</span>
             <span id="status"></span>
           </div>
 
@@ -200,6 +202,7 @@
     const money = (n) => Number(n || 0).toFixed(2);
 
     let cart = [];            // { m, sale_unit, quantity }
+    let activeIdx = -1;       // الصنف المحدد في الفاتورة (للاختصارات: زيادة/تقليل/حذف)
     let appliedCoupon = null;
     let results = [];
     let selIdx = -1;
@@ -333,6 +336,7 @@
       unit = unit || m.default_level;
       const ex = cart.find((i) => i.m.id === m.id && i.sale_unit === unit);
       if (ex) ex.quantity += 1; else cart.push({ m, sale_unit: unit, quantity: 1 });
+      activeIdx = ex ? cart.indexOf(ex) : cart.length - 1; // آخر صنف اتضاف هو المحدد
       showStatus('تمت إضافة: ' + m.name, 'ok');
       renderCart();
     }
@@ -353,7 +357,7 @@
           ? `<select class="unit-sel" data-unit-idx="${idx}">${i.m.levels.map((l) => `<option value="${l.key}" ${l.key === i.sale_unit ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>`
           : `<span class="tag form" style="margin:0;">${esc(i.m.levels[0].label)}</span>`;
         return `
-          <tr>
+          <tr class="${idx === activeLine() ? 'sel-line' : ''}">
             <td><div class="pname">${esc(i.m.name)}</div>
               ${i.m.requires_prescription ? '<div class="psub" style="color:var(--amber)">تحتاج روشتة</div>' : ''}
               ${over ? `<div class="warn">المتاح في المخزون: ${esc(stockText(i.m))}</div>` : ''}</td>
@@ -372,17 +376,53 @@
 
     $('cartBody').addEventListener('click', (e) => {
       const q = e.target.closest('[data-q]');
-      if (q) { const i = cart[+q.dataset.q]; i.quantity += +q.dataset.d; if (i.quantity < 1) cart.splice(+q.dataset.q, 1); renderCart(); return; }
+      if (q) { activeIdx = +q.dataset.q; changeQty(+q.dataset.d); return; }
       const d = e.target.closest('[data-del]');
-      if (d) { cart.splice(+d.dataset.del, 1); renderCart(); }
+      if (d) { activeIdx = +d.dataset.del; removeActive(); return; }
+      setActiveFromRow(e.target);
     });
+    $('cartBody').addEventListener('focusin', (e) => setActiveFromRow(e.target));
+
+    // ---------- الصنف المحدد في الفاتورة ----------
+    function activeLine() {
+      if (!cart.length) return -1;
+      if (activeIdx < 0 || activeIdx >= cart.length) activeIdx = cart.length - 1;
+      return activeIdx;
+    }
+    function markActive() {
+      Array.from($('cartBody').children).forEach((tr, n) => tr.classList.toggle('sel-line', n === activeIdx));
+      const tr = $('cartBody').children[activeIdx];
+      if (tr && tr.scrollIntoView) tr.scrollIntoView({ block: 'nearest' });
+    }
+    function setActiveFromRow(el) {
+      const tr = el.closest && el.closest('#cartBody tr');
+      if (!tr || !cart.length) return;
+      const n = Array.prototype.indexOf.call($('cartBody').children, tr);
+      if (n >= 0 && n !== activeIdx) { activeIdx = n; markActive(); }
+    }
+    function changeQty(d) {
+      const a = activeLine(); if (a < 0) return false;
+      cart[a].quantity += d;
+      if (cart[a].quantity < 1) { cart.splice(a, 1); activeIdx = Math.min(a, cart.length - 1); }
+      renderCart(); markActive();
+    }
+    function removeActive() {
+      const a = activeLine(); if (a < 0) return false;
+      cart.splice(a, 1); activeIdx = Math.min(a, cart.length - 1);
+      renderCart(); markActive();
+    }
+    function moveActive(d) {
+      if (!cart.length) return false;
+      activeIdx = Math.min(Math.max(activeLine() + d, 0), cart.length - 1);
+      markActive();
+    }
     $('cartBody').addEventListener('change', (e) => {
       if (e.target.dataset.unitIdx !== undefined) { cart[+e.target.dataset.unitIdx].sale_unit = e.target.value; renderCart(); }
       if (e.target.dataset.qin !== undefined) {
         const n = parseInt(e.target.value) || 1; cart[+e.target.dataset.qin].quantity = Math.max(n, 1); renderCart();
       }
     });
-    $('clearCartBtn').addEventListener('click', () => { if (cart.length && confirm('تفريغ الفاتورة؟')) { cart = []; appliedCoupon = null; $('couponStatus').textContent = ''; renderCart(); } });
+    $('clearCartBtn').addEventListener('click', () => { if (cart.length && confirm('تفريغ الفاتورة؟')) { cart = []; activeIdx = -1; appliedCoupon = null; $('couponStatus').textContent = ''; renderCart(); } });
 
     function subtotal() { return cart.reduce((s, i) => s + levelPrice(i.m, i.sale_unit) * i.quantity, 0); }
     function manualDiscount(sub) {
@@ -526,6 +566,17 @@
     Shortcuts.on('pos_coupon', focusEl('couponInput'));
     Shortcuts.on('pos_customer', focusEl('customerName'));
     Shortcuts.on('pos_notes', focusEl('notes'));
+    // لو قايمة نتايج البحث ظاهرة والمؤشر في خانة البحث، الأسهم بتتنقل بين النتايج زي الأول (نسيب السهم لحاله)
+    const cartKey = (fn) => (e) => {
+      if (!cart.length) return false;
+      if (e && e.target === $('q') && results.length) return false;
+      return fn() === false ? false : undefined;
+    };
+    Shortcuts.on('pos_qty_up', cartKey(() => changeQty(1)));
+    Shortcuts.on('pos_qty_down', cartKey(() => changeQty(-1)));
+    Shortcuts.on('pos_item_prev', cartKey(() => moveActive(-1)));
+    Shortcuts.on('pos_item_next', cartKey(() => moveActive(1)));
+    Shortcuts.on('pos_item_del', cartKey(() => removeActive()));
 
     renderCart();
   </script>

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>خطأ <%= code %> - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card" style="text-align:center;">
+      <div class="brand-mark" style="font-size:22px;">⚠️</div>
+      <h1 style="font-size:42px; margin:8px 0;" class="mono"><%= code %></h1>
+      <p class="sub"><%= message %></p>
+      <a href="/" class="btn">الرجوع للرئيسية</a>
+    </div>
+  </div>
+</body>
+</html>

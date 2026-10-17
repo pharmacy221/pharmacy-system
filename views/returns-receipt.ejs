@@ -3,26 +3,27 @@
 <head>
   <meta charset="UTF-8">
   <title>إيصال استرجاع #<%= ret.id %></title>
+  <%- include('partials/head') %>
   <style>
-    body { font-family: Tahoma, Arial, sans-serif; max-width: 420px; margin: 20px auto; padding: 16px; color: #fff; background-color: #0f1117; }
-    .card { background-color: #1a202c; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
-    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; color: #fff; }
-    .sub { text-align: center; color: #a0aec0; font-size: 12px; margin-bottom: 15px; }
+    body { font-family: Tahoma, Arial, sans-serif; max-width: 420px; margin: 20px auto; padding: 16px; color: var(--text); background-color: var(--bg); }
+    .card { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; color: var(--text); }
+    .sub { text-align: center; color: var(--text-muted); font-size: 12px; margin-bottom: 15px; }
     
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; background-color: #1a202c; color: #fff; text-align: right; }
-    th, td { padding: 10px; border-bottom: 1px solid #2d3748; font-size: 14px; }
-    th { color: #a0aec0; background-color: #2d3748; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; background-color: var(--surface); color: var(--text); text-align: right; }
+    th, td { padding: 10px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { color: var(--text-muted); background-color: var(--surface-2); font-size: 12px; }
     
     .total { 
       font-weight: bold; 
       font-size: 16px; 
       margin-top: 20px; 
       text-align: center; 
-      background-color: #2d3748;
-      border: 1px solid #4a5568;
+      background-color: var(--surface-2);
+      border: 1px solid var(--border);
       padding: 12px;
       border-radius: 6px;
-      color: #48bb78;
+      color: var(--accent);
     }
 
     .btn-print { 
@@ -31,15 +32,15 @@
       margin-top: 18px; 
       padding: 10px; 
       text-align: center; 
-      background: #4299e1; 
-      color: #fff; 
+      background: var(--accent); 
+      color: var(--on-accent); 
       border: none; 
       border-radius: 6px; 
       cursor: pointer; 
       font-size: 14px; 
       font-weight: bold;
     }
-    .btn-print:hover { background: #3182ce; }
+    .btn-print:hover { filter: brightness(1.08); }
 
     /* استجابة الموبايل بنفس نمط كود الورديات باستخدام data-label */
     @media (max-width: 640px) {
@@ -49,8 +50,8 @@
       }
       thead { display: none !important; }
       tr {
-        background-color: #1a202c !important;
-        border: 1px solid #2d3748 !important;
+        background-color: var(--surface-2) !important;
+        border: 1px solid var(--border) !important;
         border-radius: 8px;
         margin-bottom: 10px;
         padding: 6px 10px;
@@ -60,13 +61,13 @@
         justify-content: space-between !important;
         align-items: center !important;
         padding: 10px !important;
-        border-bottom: 1px solid #2d3748 !important;
+        border-bottom: 1px solid var(--border) !important;
       }
       td:last-child { border-bottom: none !important; }
       td::before {
         content: attr(data-label);
         font-weight: bold;
-        color: #a0aec0;
+        color: var(--text-muted);
       }
     }
 

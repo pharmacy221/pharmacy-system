@@ -7,7 +7,7 @@
     .details-list { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
     .detail-row { display: flex; gap: 4px; align-items: baseline; }
     .detail-label { color: var(--text-muted); white-space: nowrap; }
-    .detail-value { color: var(--text, #e5e7eb); word-break: break-word; }
+    .detail-value { color: var(--text); word-break: break-word; }
   </style>
 </head>
 <body>
@@ -37,12 +37,12 @@
           <tbody>
             <% rows.forEach(r => { %>
               <tr>
-                <td class="mono" style="color:var(--text-muted, #64748b); white-space:nowrap;">
+                <td class="mono" style="color:var(--text-muted); white-space:nowrap;">
                   <%= new Date(r.created_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true }) %>
                 </td>
                 <td><strong><%= r.username || 'غير معروف' %></strong></td>
                 <td><%= r.action %></td>
-                <td style="color:var(--text-muted, #64748b);">
+                <td style="color:var(--text-muted);">
                   <% if (r.entity_type) { %>
                     <%= r.entity_type %><% if (r.entity_id) { %> #<%= r.entity_id %><% } %>
                   <% } else { %>

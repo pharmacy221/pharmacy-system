@@ -127,7 +127,7 @@
         <h2>اختصارات الكيبورد</h2>
         <p style="color:var(--text-muted); font-size:13px; margin-top:-8px; margin-bottom:16px;">
           اضغط على الخانة وبعدين اضغط المفاتيح اللي عاوزها (مثلًا <kbd>F9</kbd> أو <kbd>Ctrl</kbd>+<kbd>K</kbd>). الاختصار بيشتغل مع كل الموظفين.
-          <b>Backspace</b> يمسح الاختصار. الحروف والأرقام لازم معاها Ctrl أو Alt، وبتشتغل حتى لو الكيبورد عربي.
+          <b>Backspace</b> يمسح الاختصار. الأسهم (↑ ↓ ← →) و Home/End/PageUp/PageDown تنفع لوحدها من غير Ctrl. الحروف والأرقام لازم معاها Ctrl أو Alt، وبتشتغل حتى لو الكيبورد عربي.
         </p>
         <form action="/settings/shortcuts" method="POST" id="scForm">
           <% const groupsSeen = []; shortcutActions.forEach(a => { if (!groupsSeen.includes(a.group)) groupsSeen.push(a.group); }); %>
@@ -193,7 +193,7 @@
           if (!combo) return; // مفتاح تعديل لوحده (Ctrl/Alt/Shift)
           var isF = /(?:^|\+)F\d+$/.test(combo);
           var hasMod = /(?:^|\+)(?:Ctrl|Alt|Meta)\+/.test(combo);
-          var named = /(?:^|\+)(?:Insert|Delete|Home|End|PageUp|PageDown)$/.test(combo);
+          var named = /(?:^|\+)(?:Insert|Delete|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$/.test(combo);
           if (!isF && !named && !hasMod) {
             warn.style.display = ''; warn.textContent = 'الحروف والأرقام لازم معاها Ctrl أو Alt';
             return;

@@ -30,6 +30,12 @@ const { getShortcuts, NAV_HREFS } = require('./lib/shortcuts');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// في الإنتاج لازم يكون فيه SESSION_SECRET حقيقي (غير كده أي حد يقدر يزوّر الجلسة)
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+  console.error('❌ لازم تحط SESSION_SECRET في متغيرات البيئة قبل التشغيل في الإنتاج');
+  process.exit(1);
+}
+
 // --- ضروري جداً لـ Vercel ---
 app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
@@ -37,6 +43,17 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// هيدرز أمان أساسية + منع تخزين الصفحات الديناميكية (عشان زر الرجوع ميعرضش صفحات بعد تسجيل الخروج)
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Referrer-Policy': 'same-origin',
+    'Cache-Control': 'no-store'
+  });
+  next();
+});
 
 app.use(session({
   store: new pgSession({
@@ -91,7 +108,17 @@ app.use('/payroll', payrollRoutes);
 app.use('/expenses', expensesRoutes);
 
 app.use((req, res) => {
-  res.status(404).send('الصفحة غير موجودة');
+  res.status(404).render('error', { code: 404, message: 'الصفحة غير موجودة' });
+});
+
+// معالج أخطاء موحّد: بدل ما السيرفر يرجّع صفحة خطأ خام
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('❌ خطأ في الطلب', req.method, req.originalUrl, err);
+  if (res.headersSent) return next(err);
+  const wantsJson = req.xhr || (req.headers.accept || '').includes('application/json');
+  if (wantsJson) return res.status(500).json({ error: 'حصل خطأ في السيرفر، حاول تاني' });
+  res.status(500).render('error', { code: 500, message: 'حصل خطأ غير متوقع، حاول تاني' });
 });
 
 if (process.env.VERCEL !== '1') {

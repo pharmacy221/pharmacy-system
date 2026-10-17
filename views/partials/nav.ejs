@@ -32,6 +32,7 @@
       <% } %>
     </nav>
     <div class="topbar-user">
+      <button type="button" class="theme-toggle" onclick="toggleTheme()" aria-label="تبديل الوضع (فاتح / داكن)" title="تبديل الوضع (فاتح / داكن)"><span class="ico-moon">🌙</span><span class="ico-sun">☀️</span></button>
       <span><%= typeof username !== 'undefined' ? username : '' %></span>
       <form action="/logout" method="POST">
         <button type="submit" class="btn-ghost-sm">خروج</button>
@@ -55,7 +56,7 @@
       .main-nav a { flex: 0 0 auto; }
       .main-nav::-webkit-scrollbar { height: 4px; }
       .main-nav::-webkit-scrollbar-thumb {
-        background: var(--border-color, rgba(255,255,255,.15));
+        background: var(--border);
         border-radius: 4px;
       }
     }

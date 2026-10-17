@@ -18,6 +18,22 @@ router.use((req, res, next) => {
   // اسم القسم/النوع اللي بيظهر جنب الصنف (حبوب / فوار / حقن ...)
   res.locals.formLabel = (p) => (p.form_kind && FORMS[p.form_kind] ? FORMS[p.form_kind].label : 'غير مصنّف');
   res.locals.groups = [];
+  // بيقسّم المخزون الحالي (بالوحدة الصغرى) لـ علب / شرائط / وحدات سايبة حسب نوع الصنف
+  res.locals.stockSplit = (p) => {
+    const f = p.form_kind ? FORMS[p.form_kind] : null;
+    const ups = Math.max(parseInt(p.units_per_strip) || 1, 1);
+    const spb = Math.max(parseInt(p.strips_per_box) || 1, 1);
+    let t = Math.max(parseInt(p.stock_units) || 0, 0);
+    if (f && !f.counted) return { box: 0, strip: 0, unit: t };
+    const hasStrip = !f || f.strip;
+    const perBox = hasStrip ? ups * spb : ups;
+    let box = 0, strip = 0;
+    if (perBox > 1) { box = Math.floor(t / perBox); t -= box * perBox; }
+    if (hasStrip && spb > 1 && ups > 1) { strip = Math.floor(t / ups); t -= strip * ups; }
+    return { box, strip, unit: t };
+  };
+  // بيانات أنواع المنتجات للجافاسكربت: بتحدد الحقول اللي تظهر في فورم الإضافة/التعديل
+  res.locals.formMeta = Object.fromEntries(Object.entries(FORMS).map(([k, f]) => [k, { unit: f.unit, counted: !!f.counted, strip: !!f.strip }]));
   next();
 });
 
@@ -26,17 +42,24 @@ const CATEGORIES = ['أدوية', 'مستحضرات تجميل', 'مكملات �
 // ترتيب الأقسام: حبوب ← فوار ← كبسول ← حقن ... (الأصناف بدون نوع في الآخر)
 const GROUP_ORDER_SQL = `COALESCE(array_position(ARRAY[${FORM_ORDER.map((k) => `'${k}'`).join(',')}]::text[], form_kind), 999)`;
 
+// توحيد الحروف العربية (أ إ آ ← ا ، ة ← ه ، ى ← ي) عشان البحث ميتأثرش بالكتابة
+const normText = (s) => String(s || '').toLowerCase()
+  .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[\u064B-\u0652\u0640]/g, '');
+const SQL_NORM = (expr) => `translate(lower(${expr}), 'أإآةى', 'اااهي')`;
+// كل بيانات الصنف القابلة للبحث في نص واحد
+const HAYSTACK = SQL_NORM(`concat_ws(' ', name, generic_name, barcode, serial_number, conditions_tags, manufacturer)`);
+const escLike = (t) => t.replace(/[\\%_]/g, (c) => '\\' + c);
+
+// البحث: كل كلمة لازم تتلاقي في أي مكان (اسم / علمي / باركود / سريال / حالة / شركة) بأي ترتيب
 function buildWhere({ q, form, instock }) {
   const params = [];
   const where = ['is_active = true'];
-  if (q && q.trim()) {
-    params.push(`%${q.trim().replace(/[\\%_]/g, (c) => '\\' + c)}%`);
-    where.push(`(name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1 OR conditions_tags ILIKE $1)`);
-  }
+  const tokens = normText(q).split(/\s+/).filter(Boolean).slice(0, 8);
+  tokens.forEach((t) => { params.push(`%${escLike(t)}%`); where.push(`${HAYSTACK} LIKE $${params.length}`); });
   if (form === 'none') where.push('form_kind IS NULL');
   else if (form && FORMS[form]) { params.push(form); where.push(`form_kind = $${params.length}`); }
   if (instock) where.push('stock_units > 0');
-  return { w: where.join(' AND '), params };
+  return { w: where.join(' AND '), params, tokens };
 }
 
 // عدد الأصناف في كل قسم (بيحترم البحث و"المتاح فقط" بس مش فلتر القسم نفسه)
@@ -50,14 +73,32 @@ async function getGroupCounts({ q, instock }) {
 }
 
 // بحث + فلتر القسم + المتاح فقط + ترقيم (الدليل فيه آلاف الأصناف)
+// وقت البحث: النتائج مترتبة بالأقرب أولاً (باركود/سريال مطابق ← الاسم يبدأ بالكلمة ← باقي النتائج)
 async function getMedicinesPage({ q, form, instock, page }) {
-  const { w, params } = buildWhere({ q, form, instock });
+  const { w, params, tokens } = buildWhere({ q, form, instock });
   const total = (await queryOne(`SELECT COUNT(*)::int AS c FROM medicines WHERE ${w}`, params)).c;
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   const p = Math.min(Math.max(parseInt(page) || 1, 1), pages);
+
+  let orderBy = `${GROUP_ORDER_SQL}, lower(name)`;
+  const rowParams = params.slice();
+  if (tokens.length) {
+    rowParams.push(String(q).trim());
+    const iRaw = rowParams.length;
+    rowParams.push(`${escLike(normText(q).trim())}%`);
+    const iFull = rowParams.length;
+    rowParams.push(`${escLike(tokens[0])}%`);
+    const iFirst = rowParams.length;
+    const nameN = SQL_NORM('name');
+    const rank = `CASE WHEN barcode = $${iRaw} OR serial_number = $${iRaw} THEN 0
+      WHEN ${nameN} LIKE $${iFull} THEN 1
+      WHEN ${nameN} LIKE $${iFirst} THEN 2
+      ELSE 3 END`;
+    orderBy = `${rank}, ${GROUP_ORDER_SQL}, lower(name)`;
+  }
   const rows = await query(
-    `SELECT * FROM medicines WHERE ${w} ORDER BY ${GROUP_ORDER_SQL}, lower(name) LIMIT ${PAGE_SIZE} OFFSET ${(p - 1) * PAGE_SIZE}`,
-    params
+    `SELECT * FROM medicines WHERE ${w} ORDER BY ${orderBy} LIMIT ${PAGE_SIZE} OFFSET ${(p - 1) * PAGE_SIZE}`,
+    rowParams
   );
   return { rows, total, pages, page: p };
 }
@@ -72,6 +113,27 @@ function parseAge(val) {
   if (val === undefined || val === null || val === '') return null;
   const n = parseFloat(val);
   return Number.isNaN(n) ? null : n;
+}
+
+// بيظبط حقول التعبئة والأسعار حسب نوع المنتج:
+//  - زجاجة/كريم/شراب/بخاخ...: وحدة واحدة بس، من غير حبات/شرايط وأسعارها
+//  - حقن/لبوس/أكياس/فوار: وحدات بالعلبة بس (من غير شرايط)
+//  - حبوب/كبسول: حبة / شريط / علبة (كله اختياري)
+function packFields(kind, b) {
+  const f = kind ? FORMS[kind] : null;
+  let ups = parseInt(b.units_per_strip) || 1;
+  let spb = parseInt(b.strips_per_box) || 1;
+  let strip = b.sale_price_strip ? parseFloat(b.sale_price_strip) : null;
+  let box = b.sale_price_box ? parseFloat(b.sale_price_box) : null;
+  if (f && !f.counted) { ups = 1; spb = 1; strip = null; box = null; }
+  else if (f && !f.strip) { spb = 1; strip = null; }
+  return { ups, spb, strip, box };
+}
+
+// إجمالي المخزون بالوحدة الصغرى من (علب + شرائط + وحدات سايبة)
+function stockTotal(pack, b) {
+  const n = (v) => Math.max(parseInt(v) || 0, 0);
+  return n(b.stock_box_qty) * pack.ups * pack.spb + n(b.stock_strip_qty) * pack.ups + n(b.stock_unit_qty);
 }
 
 // ============ قائمة الأصناف ============
@@ -92,21 +154,22 @@ router.get('/', async (req, res, next) => {
 });
 
 // ============ إضافة صنف جديد ============
-router.post('/add', async (req, res, next) => {
+router.post('/add', requireAdmin, async (req, res, next) => {
   try {
     const {
       name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
       requires_prescription, controlled_substance,
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
-      cost_price_unit, stock_units, min_stock_units,
+      cost_price_unit, min_stock_units,
       conditions_tags, min_age_years, max_age_years, form_kind
     } = req.body;
     const kind = FORMS[form_kind] ? form_kind : null;
+    const pack = packFields(kind, req.body);
 
     if (!name || !name.trim() || sale_price_unit === undefined || sale_price_unit === '') {
       const medicines = await getMedicines();
-      return res.render('products', { medicines, categories: CATEGORIES, error: 'اسم الصنف وسعر بيع الحبة مطلوبين', searchQuery: '', active: 'products' });
+      return res.render('products', { medicines, categories: CATEGORIES, error: 'اسم الصنف وسعر البيع مطلوبين', searchQuery: '', active: 'products' });
     }
 
     await query(
@@ -128,13 +191,13 @@ router.post('/add', async (req, res, next) => {
         serial_number && serial_number.trim() ? serial_number.trim() : null,
         requires_prescription === 'on',
         controlled_substance === 'on',
-        parseInt(units_per_strip) || 1,
-        parseInt(strips_per_box) || 1,
+        pack.ups,
+        pack.spb,
         parseFloat(sale_price_unit) || 0,
-        sale_price_strip ? parseFloat(sale_price_strip) : null,
-        sale_price_box ? parseFloat(sale_price_box) : null,
+        pack.strip,
+        pack.box,
         parseFloat(cost_price_unit) || 0,
-        parseInt(stock_units) || 0,
+        stockTotal(pack, req.body),
         parseInt(min_stock_units) || 10,
         conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
         parseAge(min_age_years),
@@ -155,7 +218,7 @@ router.post('/add', async (req, res, next) => {
 });
 
 // ============ تعديل صنف ============
-router.post('/:id/update', async (req, res, next) => {
+router.post('/:id/update', requireAdmin, async (req, res, next) => {
   try {
     const {
       name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
@@ -166,6 +229,9 @@ router.post('/:id/update', async (req, res, next) => {
       conditions_tags, min_age_years, max_age_years, form_kind
     } = req.body;
     const kind = FORMS[form_kind] ? form_kind : null;
+    // لو النوع مااتغيرش (— بدون تغيير —) نعتمد على النوع المحفوظ للصنف
+    const current = await queryOne('SELECT form_kind, stock_units FROM medicines WHERE id = $1', [req.params.id]);
+    const pack = packFields(kind || (current && current.form_kind) || null, req.body);
 
     await query(
       `UPDATE medicines SET
@@ -186,11 +252,11 @@ router.post('/:id/update', async (req, res, next) => {
         serial_number && serial_number.trim() ? serial_number.trim() : null,
         requires_prescription === 'on',
         controlled_substance === 'on',
-        parseInt(units_per_strip) || 1,
-        parseInt(strips_per_box) || 1,
+        pack.ups,
+        pack.spb,
         parseFloat(sale_price_unit) || 0,
-        sale_price_strip ? parseFloat(sale_price_strip) : null,
-        sale_price_box ? parseFloat(sale_price_box) : null,
+        pack.strip,
+        pack.box,
         parseFloat(cost_price_unit) || 0,
         parseInt(min_stock_units) || 10,
         conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
@@ -201,6 +267,15 @@ router.post('/:id/update', async (req, res, next) => {
       ]
     );
 
+    // المخزون بيتغير بس لو المستخدم عدّل خانات الكمية (عشان مانكتبش فوق مبيعات حصلت في نفس الوقت)
+    if (req.body.stock_dirty === '1') {
+      const newStock = stockTotal(pack, req.body);
+      await query('UPDATE medicines SET stock_units = $1 WHERE id = $2', [newStock, req.params.id]);
+      await logActivity(req, {
+        action: 'تعديل كمية المخزون يدويًا', entityType: 'medicine', entityId: req.params.id,
+        details: { from: current ? current.stock_units : null, to: newStock }
+      });
+    }
     await logActivity(req, { action: 'تعديل بيانات صنف', entityType: 'medicine', entityId: req.params.id });
     res.redirect('/products');
   } catch (err) {

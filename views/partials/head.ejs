@@ -1,5 +1,4 @@
-<head>
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -8,6 +7,25 @@
   <!-- PWA / موبايل -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0f0f0f">
+
+  <!-- الثيم: يتطبق قبل الرسم عشان مفيش وميض -->
+  <script>
+    (function () {
+      var t = 'dark';
+      try { t = localStorage.getItem('theme') || 'dark'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t);
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', t === 'light' ? '#f3f5f9' : '#0f0f0f');
+      window.toggleTheme = function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.classList.add('theme-ready');
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) {}
+        var mm = document.querySelector('meta[name="theme-color"]');
+        if (mm) mm.setAttribute('content', next === 'light' ? '#f3f5f9' : '#0f0f0f');
+      };
+    })();
+  </script>
 
   <!-- دعم آيفون/سفاري -->
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -24,4 +42,3 @@
       });
     }
   </script>
-</head>

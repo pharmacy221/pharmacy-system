@@ -158,7 +158,7 @@ router.post('/checkout', async (req, res, next) => {
       appliedCoupon = coupon;
     }
 
-    const manualDiscount = parseFloat(discount_amount) || 0;
+    const manualDiscount = Math.max(parseFloat(discount_amount) || 0, 0); // مينفعش الخصم يبقى بالسالب
 
     // احتياج للتحقق من وجود روشتة لأي صنف يستلزمها (تنبيه فقط، مش قفل صارم)
     let requiresPrescriptionWarning = false;

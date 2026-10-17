@@ -51,6 +51,19 @@ router.post('/add', async (req, res, next) => {
     if (!saleItem) return res.status(400).send('بند الفاتورة غير موجود');
 
     const qty = parseInt(quantity) || 1;
+    if (qty < 1) return res.status(400).send('الكمية لازم تكون 1 أو أكتر');
+
+    // مينفعش يترجع أكتر من اللي اتباع (مع حساب اللي اترجع قبل كده من نفس الفاتورة والصنف والوحدة)
+    const alreadyReturned = await queryOne(
+      `SELECT COALESCE(SUM(quantity), 0)::int AS q FROM returns
+       WHERE invoice_id = $1 AND medicine_id = $2 AND sale_unit = $3`,
+      [saleItem.invoice_id, saleItem.medicine_id, saleItem.sale_unit]
+    );
+    const remaining = Number(saleItem.quantity) - (alreadyReturned ? alreadyReturned.q : 0);
+    if (qty > remaining) {
+      return res.status(400).send(`الكمية المرتجعة أكبر من المتاح للإرجاع (المتبقي: ${Math.max(remaining, 0)})`);
+    }
+
     const unitsPerQty = saleItem.quantity_units / saleItem.quantity; // للتحويل لنفس وحدة sale_unit
     const quantityUnits = Math.round(qty * unitsPerQty);
     const refundAmount = Math.round((Number(saleItem.unit_price) * qty) * 100) / 100;
@@ -59,7 +72,7 @@ router.post('/add', async (req, res, next) => {
       `INSERT INTO returns (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, refund_amount, reason, restocked, created_by, unit_label)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
-        invoice_id || saleItem.invoice_id,
+        saleItem.invoice_id,
         saleItem.medicine_id,
         saleItem.medicine_name_snapshot,
         saleItem.sale_unit,

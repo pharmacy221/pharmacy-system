@@ -34,7 +34,7 @@
         <div class="field"><label>النقدية الافتتاحية</label><div class="mono"><%= Number(activeShift.opening_balance).toFixed(2) %> ج.م</div></div>
         <div class="field"><label>مبيعات الوردية حتى الآن</label><div class="mono accent"><%= Number(liveSalesTotal).toFixed(2) %> ج.م</div></div>
 
-        <hr style="border-color: var(--border-color, #2a2f3a); margin: 16px 0;">
+        <hr style="border-color: var(--border); margin: 16px 0;">
 
         <form action="/shifts/close" method="POST">
           <div class="field">

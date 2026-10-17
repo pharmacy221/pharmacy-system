@@ -1,4 +1,4 @@
-const CACHE_NAME = 'phone-shop-v1';
+const CACHE_NAME = 'pharmacy-v2';
 
 // الملفات الثابتة اللي هنخزنها عشان تفتح بسرعة حتى لو النت بطيء
 const STATIC_ASSETS = [
@@ -29,6 +29,12 @@ self.addEventListener('fetch', (event) => {
 
   // استبعاد أي طلبات لا تبدأ بـ http أو https (مثل chrome-extension://)
   if (!event.request.url.startsWith('http')) return;
+
+  // بنخزّن بس الملفات الثابتة (CSS/JS/أيقونات). صفحات النظام فيها بيانات حساسة (مبيعات/مرتبات)
+  // فمتتخزنش في الكاش عشان متفضلش ظاهرة بعد تسجيل الخروج على جهاز مشترك
+  const url = new URL(event.request.url);
+  const isStatic = url.origin === self.location.origin && /^\/(css|js|icons)\/|^\/manifest\.json$/.test(url.pathname);
+  if (!isStatic) return;
 
   event.respondWith(
     fetch(event.request)
