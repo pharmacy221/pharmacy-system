@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>فاتورة #<%= invoice.id %> - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'sales' %>
+  <%- include('partials/nav') %>
+
+  <% const unitLabels = { unit: 'حبة', strip: 'شريط', box: 'علبة' }; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>فاتورة #<%= invoice.id %></h1>
+        <p><%= new Date(invoice.created_at).toLocaleString('ar-EG') %></p>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a href="/pos/receipt/<%= invoice.id %>" target="_blank" class="btn-outline btn-sm">🖨 طباعة الإيصال</a>
+        <a href="/sales" class="btn-ghost-sm">← رجوع للفواتير</a>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>بنود الفاتورة</h2>
+        <table>
+          <thead>
+            <tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+          </thead>
+          <tbody>
+            <% items.forEach(item => { %>
+              <tr>
+                <td data-label="الصنف"><%= item.medicine_name_snapshot %></td>
+                <td data-label="الوحدة"><%= item.unit_label || unitLabels[item.sale_unit] || item.sale_unit %></td>
+                <td class="mono" data-label="الكمية"><%= item.quantity %></td>
+                <td class="mono" data-label="السعر"><%= Number(item.unit_price).toFixed(2) %></td>
+                <td class="mono" data-label="الإجمالي"><%= Number(item.total).toFixed(2) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>ملخص الفاتورة</h2>
+        <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span>طريقة الدفع</span>
+          <span><%= invoice.payment_method === 'card' ? 'بطاقة' : (invoice.payment_method === 'other' ? 'أخرى' : 'كاش') %></span>
+        </div>
+        <% if (invoice.customer_name) { %>
+        <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span>العميل</span>
+          <span><%= invoice.customer_name %></span>
+        </div>
+        <% } %>
+        <% if (invoice.customer_phone) { %>
+        <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span>تليفون العميل</span>
+          <span class="mono"><%= invoice.customer_phone %></span>
+        </div>
+        <% } %>
+        <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span>الخصم</span>
+          <span class="mono" style="color:var(--danger)">- <%= Number(invoice.discount).toFixed(2) %></span>
+        </div>
+        <div class="summary-row" style="display:flex; justify-content:space-between; font-weight:700; font-size:18px; border-top:1px solid var(--border-color, #2a2f3a); padding-top:10px; margin-top:6px;">
+          <span>الإجمالي</span>
+          <span class="mono accent"><%= Number(invoice.total).toFixed(2) %> ج.م</span>
+        </div>
+        <% if (invoice.notes) { %>
+          <p style="margin-top:14px; color:var(--text-muted); font-size:13px;">ملاحظات: <%= invoice.notes %></p>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

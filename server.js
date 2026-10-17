@@ -25,6 +25,7 @@ const expensesRoutes = require('./routes/expenses');
 
 
 const { requireLogin } = require('./middleware/auth');
+const { getShortcuts, NAV_HREFS } = require('./lib/shortcuts');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,6 +60,15 @@ app.use((req, res, next) => {
   res.locals.username = req.session.username || null;
   res.locals.role = req.session.role || null;
   res.locals.shopName = process.env.PHARMACY_NAME || 'السوركي ';
+  next();
+});
+
+// اختصارات الكيبورد اللي حددها الأدمن (متاحة لكل الصفحات بعد تسجيل الدخول)
+app.use(async (req, res, next) => {
+  res.locals.scConfig = { keys: {}, nav: NAV_HREFS };
+  if (req.session && req.session.userId) {
+    try { res.locals.scConfig.keys = await getShortcuts(); } catch (err) { /* بنكمل بدون اختصارات */ }
+  }
   next();
 });
 

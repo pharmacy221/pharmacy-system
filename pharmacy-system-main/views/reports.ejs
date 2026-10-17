@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>التقارير - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'reports' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>التقارير والأرباح</h1>
+        <p>ملخص المبيعات والأرباح، الأصناف الأكثر مبيعًا، النواقص، وقرب انتهاء الصلاحية</p>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">مبيعات اليوم</div>
+        <div class="value accent"><%= todaySummary.revenue.toFixed(2) %> ج.م</div>
+        <div class="sub">ربح: <%= todaySummary.profit.toFixed(2) %> ج.م — <%= todaySummary.count %> فاتورة</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مبيعات آخر 7 أيام</div>
+        <div class="value accent"><%= weekSummary.revenue.toFixed(2) %> ج.م</div>
+        <div class="sub">ربح: <%= weekSummary.profit.toFixed(2) %> ج.م — <%= weekSummary.count %> فاتورة</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مبيعات الشهر الحالي</div>
+        <div class="value accent"><%= monthSummary.revenue.toFixed(2) %> ج.م</div>
+        <div class="sub">ربح: <%= monthSummary.profit.toFixed(2) %> ج.م — <%= monthSummary.count %> فاتورة</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>الإيرادات يوميًا</h2>
+      <form method="GET" action="/reports" class="range-form">
+        <div class="field"><label>من</label><input type="date" name="from" value="<%= from %>"></div>
+        <div class="field"><label>إلى</label><input type="date" name="to" value="<%= to %>"></div>
+        <button type="submit" class="btn-outline btn-sm">تحديث</button>
+      </form>
+
+      <div class="stat-card" style="margin-top:14px;">
+        <div class="label">إجمالي الفترة المختارة</div>
+        <div class="value accent"><%= rangeSummary.revenue.toFixed(2) %> ج.م</div>
+        <div class="sub">ربح: <%= rangeSummary.profit.toFixed(2) %> ج.م — <%= rangeSummary.count %> فاتورة</div>
+      </div>
+
+      <% if (dailySeries.length === 0) { %>
+        <div class="empty-state">مفيش بيانات في المدى ده</div>
+      <% } else { %>
+        <div class="bar-chart" style="margin-top:16px;">
+          <% dailySeries.forEach(d => { %>
+            <% const h = Math.max(2, Math.round((Number(d.revenue) / maxRevenue) * 160)); %>
+            <div class="bar-col" title="<%= d.day %>: <%= Number(d.revenue).toFixed(2) %> ج.م">
+              <div class="bar-stack" style="height:180px">
+                <div class="bar-seg" style="height:<%= h %>px; background: var(--accent); border-radius:3px 3px 0 0;"></div>
+              </div>
+              <div class="bar-total mono"><%= Number(d.revenue).toFixed(0) %></div>
+              <div class="bar-label mono"><%= String(d.day).slice(5) %></div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>الأصناف الأكثر مبيعًا</h2>
+        <% if (topMedicines.length === 0) { %>
+          <div class="empty-state">مفيش بيانات في المدى ده</div>
+        <% } else { %>
+          <table>
+            <thead><tr><th>الصنف</th><th>الكمية المباعة (حبة)</th><th>الإيراد</th></tr></thead>
+            <tbody>
+              <% topMedicines.forEach(m => { %>
+                <tr>
+                  <td data-label="الصنف"><%= m.name %></td>
+                  <td class="mono" data-label="الكمية المباعة"><%= m.units_sold %></td>
+                  <td class="mono accent" data-label="الإيراد"><%= Number(m.revenue).toFixed(2) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>أصناف تحت حد الطلب الأدنى</h2>
+        <% if (lowStock.length === 0) { %>
+          <div class="empty-state">كل الأصناف فوق الحد الأدنى</div>
+        <% } else { %>
+          <table>
+            <thead><tr><th>الصنف</th><th>المخزون الحالي</th><th>الحد الأدنى</th></tr></thead>
+            <tbody>
+              <% lowStock.forEach(p => { %>
+                <tr>
+                  <td data-label="الصنف"><%= p.name %></td>
+                  <td class="mono" style="color:var(--amber)" data-label="المخزون الحالي"><%= p.stock_units %></td>
+                  <td class="mono" data-label="الحد الأدنى"><%= p.min_stock_units %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>تشغيلات قربت تنتهي (خلال 90 يوم) أو منتهية</h2>
+      <% if (nearExpiry.length === 0) { %>
+        <div class="empty-state">مفيش تشغيلات قربت تنتهي</div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>الصنف</th><th>رقم التشغيلة</th><th>الصلاحية</th><th>المتبقي</th></tr></thead>
+          <tbody>
+            <% nearExpiry.forEach(b => { %>
+              <tr>
+                <td data-label="الصنف"><%= b.name %></td>
+                <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="رقم التشغيلة"><%= b.batch_number || '—' %></td>
+                <td class="mono" style="<%= b.days_left < 0 ? 'color:var(--danger)' : 'color:var(--amber)' %>" data-label="الصلاحية">
+                  <%= new Date(b.expiry_date).toLocaleDateString('ar-EG') %>
+                  (<%= b.days_left < 0 ? 'منتهية' : 'باقي ' + b.days_left + ' يوم' %>)
+                </td>
+                <td class="mono" data-label="المتبقي"><%= b.quantity_units %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الموظفين والرواتب - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'payroll' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>الموظفين والرواتب</h1>
+        <p>إجمالي الرواتب الأساسية الشهرية: <span class="mono"><%= Number(totals.total_base_salaries).toFixed(2) %></span> ج.م</p>
+      </div>
+      <a href="/expenses" class="btn-outline">💵 المصروفات العامة</a>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="card">
+      <h2>إضافة موظف جديد</h2>
+      <form method="POST" action="/payroll/add" class="form-grid">
+        <div class="field"><label>الاسم *</label><input type="text" name="name" required></div>
+        <div class="field"><label>التليفون</label><input type="text" name="phone"></div>
+        <div class="field"><label>الوظيفة</label><input type="text" name="job_title" placeholder="صيدلي / كاشير / عامل توصيل..."></div>
+        <div class="field"><label>الراتب الأساسي الشهري</label><input type="number" step="0.01" name="base_salary" required></div>
+        <div class="field"><label>تاريخ التعيين</label><input type="date" name="hire_date"></div>
+        <div class="field"><label>ملاحظات</label><input type="text" name="notes"></div>
+        <button type="submit" class="btn">إضافة</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>كل الموظفين (<%= employees.length %>)</h2>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>الاسم</th><th>الوظيفة</th><th>الراتب الأساسي</th><th>سلف غير مسددة</th><th>الحالة</th><th></th></tr></thead>
+          <tbody>
+            <% employees.forEach(e => { %>
+              <tr>
+                <td><a href="/payroll/<%= e.id %>"><%= e.name %></a></td>
+                <td style="color:var(--text-muted)"><%= e.job_title || '-' %></td>
+                <td class="mono"><%= Number(e.base_salary).toFixed(2) %></td>
+                <td class="mono <%= Number(e.unsettled_advances) > 0 ? 'err' : '' %>"><%= Number(e.unsettled_advances).toFixed(2) %></td>
+                <td><span class="badge <%= e.is_active ? 'badge-matched' : 'badge-ignored' %>"><%= e.is_active ? 'شغال' : 'متوقف' %></span></td>
+                <td>
+                  <a href="/payroll/<%= e.id %>" class="btn-sm">التفاصيل</a>
+                  <% if (e.is_active) { %>
+                    <form method="POST" action="/payroll/<%= e.id %>/delete" style="display:inline" onsubmit="return confirm('تأكيد إلغاء تفعيل الموظف؟');">
+                      <button type="submit" class="btn-danger btn-sm">إلغاء تفعيل</button>
+                    </form>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الموردين - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'suppliers' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>الموردين</h1>
+        <p>شركات ووكلاء توريد الأدوية</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>قائمة الموردين <% if (searchQuery) { %><span style="color:var(--text-muted); font-size:13px;">(بحث: "<%= searchQuery %>")</span><% } %></h2>
+
+        <form action="/suppliers" method="GET" style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" name="q" value="<%= searchQuery %>" placeholder="ابحث بالاسم أو رقم الهاتف...">
+          <button type="submit" class="btn-outline btn-sm">بحث</button>
+          <% if (searchQuery) { %><a href="/suppliers" class="btn-ghost-sm">إلغاء</a><% } %>
+        </form>
+
+        <% if (suppliers.length === 0) { %>
+          <div class="empty-state"><%= searchQuery ? 'لا توجد نتائج مطابقة' : 'لا يوجد موردين مسجلين حالياً' %></div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>اسم المورد</th><th>الهاتف</th><th>العنوان</th><th></th></tr>
+            </thead>
+            <tbody>
+              <% suppliers.forEach(sup => { %>
+                <tr>
+                  <td data-label="اسم المورد"><a href="/suppliers/<%= sup.id %>" style="color:var(--accent)"><%= sup.name %></a></td>
+                  <td style="color:var(--text-muted)" data-label="الهاتف"><%= sup.phone || '-' %></td>
+                  <td style="color:var(--text-muted)" data-label="العنوان"><%= sup.address || '-' %></td>
+                  <td style="display:flex; gap:6px;" data-label="إجراءات">
+                    <a href="/suppliers/<%= sup.id %>" class="btn-ghost-sm">التفاصيل</a>
+                    <form action="/suppliers/<%= sup.id %>/delete" method="POST" onsubmit="return confirm('تأكيد حذف المورد؟')">
+                      <button class="btn-ghost-sm" type="submit">حذف</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>إضافة مورد جديد</h2>
+        <form action="/suppliers/add" method="POST">
+          <div class="field">
+            <label>اسم المورد / الشركة</label>
+            <input type="text" name="name" required>
+          </div>
+          <div class="field">
+            <label>رقم الهاتف</label>
+            <input type="text" name="phone">
+          </div>
+          <div class="field">
+            <label>العنوان</label>
+            <input type="text" name="address">
+          </div>
+          <div class="field">
+            <label>ملاحظات</label>
+            <textarea name="notes" rows="2"></textarea>
+          </div>
+          <button type="submit" class="btn">إضافة المورد</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

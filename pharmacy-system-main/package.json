@@ -1,0 +1,24 @@
+{
+  "name": "pharmacy-system",
+  "version": "1.0.0",
+  "description": "نظام إدارة متكامل لصيدلية - مبيعات، مخزون بالحبة/الشريط/العلبة، تشغيلات وصلاحية (FEFO)، مرتجعات، موردين، وتقارير (Supabase/Postgres)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node db/seed.js",
+    "import-drugs": "node db/import-drugs.js",
+    "import-inventory": "node db/import-inventory.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^9.0.1",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "pg": "^8.13.0"
+  }
+}

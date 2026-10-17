@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>لوحة التحكم - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'dashboard' %>
+  <%- include('partials/nav') %>
+
+  <% const unitLabels = { unit: 'حبة', strip: 'شريط', box: 'علبة' }; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>نظرة عامة</h1>
+        <p>ملخص أداء الصيدلية اليوم</p>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">مبيعات اليوم</div>
+        <div class="value accent"><%= today.revenue.toFixed(2) %> ج.م</div>
+        <div class="sub"><%= today.count %> فاتورة</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">ربح اليوم</div>
+        <div class="value accent"><%= today.profit.toFixed(2) %> ج.م</div>
+        <div class="sub"><a href="/reports" style="color:var(--text-muted)">التفاصيل والتحليلات ←</a></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">مبيعات الشهر</div>
+        <div class="value"><%= month.revenue.toFixed(2) %> ج.م</div>
+        <div class="sub"><%= month.count %> فاتورة</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">ربح الشهر</div>
+        <div class="value"><%= month.profit.toFixed(2) %> ج.م</div>
+        <div class="sub"><a href="/reports" style="color:var(--text-muted)">التفاصيل والتحليلات ←</a></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">أصناف على وشك النفاد</div>
+        <div class="value amber"><%= lowStockCount %></div>
+        <div class="sub"><a href="/products" style="color:var(--text-muted)">عرض المخزون ←</a></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">تشغيلات قريبة الانتهاء</div>
+        <div class="value amber"><%= nearExpiryCount %></div>
+        <div class="sub"><a href="/products/batches" style="color:var(--text-muted)">عرض التشغيلات ←</a></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>آخر الفواتير</h2>
+        <% if (recentInvoices.length === 0) { %>
+          <div class="empty-state">لسه مفيش مبيعات مسجلة</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>رقم الفاتورة</th><th>الإجمالي</th><th>الدفع</th><th>الوقت</th></tr>
+            </thead>
+            <tbody>
+              <% recentInvoices.forEach(inv => { %>
+                <tr>
+                  <td class="mono" data-label="رقم الفاتورة"><a href="/sales/<%= inv.id %>" style="color:var(--accent)">#<%= inv.id %></a></td>
+                  <td class="mono" data-label="الإجمالي"><%= Number(inv.total).toFixed(2) %> ج.م</td>
+                  <td data-label="الدفع"><%= inv.payment_method === 'card' ? 'بطاقة' : (inv.payment_method === 'other' ? 'أخرى' : 'كاش') %></td>
+                  <td class="mono" style="color:var(--text-muted)" data-label="الوقت"><%= new Date(inv.created_at).toLocaleString('ar-EG') %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>تشغيلات قريبة الانتهاء</h2>
+        <% if (nearExpiry.length === 0) { %>
+          <div class="empty-state">مفيش تشغيلات قربت تنتهي</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الصنف</th><th>الصلاحية</th><th>المتبقي</th></tr>
+            </thead>
+            <tbody>
+              <% nearExpiry.forEach(b => { %>
+                <tr>
+                  <td data-label="الصنف"><%= b.name %></td>
+                  <td class="mono" style="<%= b.days_left < 0 ? 'color:var(--danger)' : 'color:var(--amber)' %>" data-label="الصلاحية">
+                    <%= new Date(b.expiry_date).toLocaleDateString('ar-EG') %>
+                  </td>
+                  <td class="mono" data-label="المتبقي"><%= b.quantity_units %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </div>
+
+    <% if (lowStock.length > 0) { %>
+      <div class="card">
+        <h2>تنبيه مخزون منخفض</h2>
+        <% lowStock.forEach(p => { %>
+          <div class="low-stock-row">
+            <span><%= p.name %></span>
+            <span class="mono" style="color:var(--amber)">متبقي <%= p.stock_units %></span>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>

@@ -101,10 +101,10 @@
           </div>
           <div class="searchmeta">
             <label><input type="checkbox" id="instock"> المتاح في المخزون فقط</label>
-            <span><kbd>F2</kbd> بحث</span>
+            <span data-sc-wrap="search"><kbd data-sc="search"></kbd> بحث</span>
             <span><kbd>↑</kbd><kbd>↓</kbd> تنقل</span>
             <span><kbd>Enter</kbd> إضافة</span>
-            <span><kbd>Ctrl+Enter</kbd> إتمام البيع</span>
+            <span><kbd>Ctrl+Enter</kbd> <span data-sc-wrap="pos_checkout" style="display:inline"><kbd data-sc="pos_checkout"></kbd> </span>إتمام البيع</span>
             <span id="status"></span>
           </div>
 
@@ -508,10 +508,24 @@
     }
     $('checkoutBtn').addEventListener('click', doCheckout);
 
+    // ---------- اختصارات الكيبورد (الأدمن بيحدد المفاتيح من الإعدادات) ----------
+    // Ctrl+Enter ثابت لإتمام البيع، وباقي الاختصارات متحددة من /settings
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'F2') { e.preventDefault(); $('q').focus(); $('q').select(); }
-      if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) { e.preventDefault(); doCheckout(); }
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); doCheckout(); }
     });
+    const focusEl = (id) => () => { const el = $(id); if (el) { el.focus(); if (el.select) el.select(); } };
+    const payBtn = (v) => () => { const b = $('payTabs').querySelector('button[data-v="' + v + '"]'); if (b) b.click(); };
+    Shortcuts.on('pos_checkout', () => { doCheckout(); });
+    Shortcuts.on('pos_clear', () => { $('clearCartBtn').click(); });
+    Shortcuts.on('pos_camera', () => { $('openCameraBtn').click(); });
+    Shortcuts.on('pos_instock', () => { const c = $('instock'); c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); });
+    Shortcuts.on('pos_pay_cash', payBtn('cash'));
+    Shortcuts.on('pos_pay_card', payBtn('card'));
+    Shortcuts.on('pos_pay_other', payBtn('other'));
+    Shortcuts.on('pos_discount', focusEl('discountValue'));
+    Shortcuts.on('pos_coupon', focusEl('couponInput'));
+    Shortcuts.on('pos_customer', focusEl('customerName'));
+    Shortcuts.on('pos_notes', focusEl('notes'));
 
     renderCart();
   </script>

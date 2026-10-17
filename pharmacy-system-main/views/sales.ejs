@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>فواتير البيع - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'sales' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>فواتير البيع</h1>
+        <p>سجل كل عمليات البيع اللي تمت من شاشة الكاشير</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>سجل الفواتير (آخر 200)</h2>
+      <% if (invoices.length === 0) { %>
+        <div class="empty-state">لسه مفيش فواتير مسجلة</div>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr><th>رقم الفاتورة</th><th>عدد الأصناف</th><th>الإجمالي</th><th>الربح</th><th>الدفع</th><th>العميل</th><th>الكاشير</th><th>الوقت</th><th></th></tr>
+          </thead>
+          <tbody>
+            <% invoices.forEach(inv => { %>
+              <tr>
+                <td class="mono" data-label="رقم الفاتورة"><a href="/sales/<%= inv.id %>" style="color:var(--accent)">#<%= inv.id %></a></td>
+                <td class="mono" data-label="عدد الأصناف"><%= inv.items_count %></td>
+                <td class="mono" data-label="الإجمالي"><%= Number(inv.total).toFixed(2) %></td>
+                <td class="mono accent" data-label="الربح"><%= Number(inv.profit).toFixed(2) %></td>
+                <td data-label="الدفع"><%= inv.payment_method === 'card' ? 'بطاقة' : (inv.payment_method === 'other' ? 'أخرى' : 'كاش') %></td>
+                <td style="color:var(--text-muted)" data-label="العميل"><%= inv.customer_name || '-' %></td>
+                <td style="color:var(--text-muted)" data-label="الكاشير"><%= inv.cashier_username || '-' %></td>
+                <td class="mono" style="color:var(--text-muted)" data-label="الوقت"><%= new Date(inv.created_at).toLocaleString('ar-EG') %></td>
+                <td data-label="إجراءات" style="display:flex; gap:6px;">
+                  <a href="/pos/receipt/<%= inv.id %>" target="_blank" class="btn-ghost-sm">إيصال</a>
+                  <% if (role === 'admin') { %>
+                    <form action="/sales/<%= inv.id %>/delete" method="POST" onsubmit="return confirm('تأكيد حذف الفاتورة؟ هيرجع كل الكميات المباعة للمخزون')">
+                      <button class="btn-ghost-sm" type="submit">حذف</button>
+                    </form>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

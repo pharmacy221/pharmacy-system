@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>المرتجعات - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'returns' %>
+  <%- include('partials/nav') %>
+
+  <% const unitLabels = { unit: 'حبة', strip: 'شريط', box: 'علبة' }; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>المرتجعات</h1>
+        <p>تسجيل إرجاع صنف من فاتورة بيع سابقة</p>
+      </div>
+    </div>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>سجل المرتجعات (آخر 200)</h2>
+        <% if (returns.length === 0) { %>
+          <div class="empty-state">لسه مفيش مرتجعات مسجلة</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الصنف</th><th>الكمية</th><th>المبلغ المرجّع</th><th>السبب</th><th>رجعت للمخزون؟</th><th></th></tr>
+            </thead>
+            <tbody>
+              <% returns.forEach(r => { %>
+                <tr>
+                  <td data-label="الصنف"><%= r.medicine_name_snapshot || '-' %></td>
+                  <td class="mono" data-label="الكمية"><%= r.quantity %> <%= r.unit_label || unitLabels[r.sale_unit] || r.sale_unit %></td>
+                  <td class="mono accent" data-label="المبلغ المرجّع"><%= Number(r.refund_amount).toFixed(2) %></td>
+                  <td style="color:var(--text-muted)" data-label="السبب"><%= r.reason || '-' %></td>
+                  <td data-label="رجعت للمخزون؟"><%= r.restocked ? 'آه' : 'لأ' %></td>
+                  <td style="display:flex; gap:6px;" data-label="إجراءات">
+                    <a href="/returns/<%= r.id %>/receipt" target="_blank" class="btn-ghost-sm">إيصال</a>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>تسجيل مرتجع جديد</h2>
+
+        <div class="field">
+          <label>رقم الفاتورة</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="invoiceIdInput" placeholder="مثال: 123" style="flex:1;">
+            <button type="button" class="btn-outline btn-sm" id="findInvoiceBtn">بحث</button>
+          </div>
+        </div>
+        <div id="invoiceSearchStatus" class="scan-status"></div>
+
+        <form action="/returns/add" method="POST" id="returnForm" style="display:none;">
+          <input type="hidden" name="invoice_id" id="invoiceIdField">
+          <div class="field">
+            <label>بند الفاتورة</label>
+            <select name="sale_item_id" id="saleItemSelect" required>
+            </select>
+          </div>
+          <div class="field">
+            <label>الكمية المرتجعة</label>
+            <input type="number" name="quantity" id="returnQty" value="1" min="1">
+          </div>
+          <div class="field">
+            <label>السبب (اختياري)</label>
+            <textarea name="reason" rows="2" placeholder="عيب في المنتج، غلط في الطلب..."></textarea>
+          </div>
+          <div class="field" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="restock" id="restockCheck" checked style="width:auto;">
+            <label for="restockCheck" style="margin:0;">رجّع الكمية للمخزون</label>
+          </div>
+          <button type="submit" class="btn">تسجيل المرتجع</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const invoiceIdInput = document.getElementById('invoiceIdInput');
+    const findInvoiceBtn = document.getElementById('findInvoiceBtn');
+    const invoiceSearchStatus = document.getElementById('invoiceSearchStatus');
+    const returnForm = document.getElementById('returnForm');
+    const invoiceIdField = document.getElementById('invoiceIdField');
+    const saleItemSelect = document.getElementById('saleItemSelect');
+    const returnQty = document.getElementById('returnQty');
+    const unitLabelsJs = { unit: 'حبة', strip: 'شريط', box: 'علبة' };
+
+    async function findInvoice() {
+      const id = invoiceIdInput.value.trim();
+      if (!id) return;
+      invoiceSearchStatus.textContent = 'بدور...';
+      invoiceSearchStatus.className = 'scan-status';
+      try {
+        const res = await fetch('/returns/invoice/' + encodeURIComponent(id));
+        const data = await res.json();
+        if (!data.found) {
+          invoiceSearchStatus.textContent = 'الفاتورة غير موجودة';
+          invoiceSearchStatus.className = 'scan-status err';
+          returnForm.style.display = 'none';
+          return;
+        }
+        invoiceSearchStatus.textContent = 'فاتورة #' + data.invoice.id + ' - ' + (data.invoice.customer_name || 'بدون اسم عميل');
+        invoiceSearchStatus.className = 'scan-status ok';
+        invoiceIdField.value = data.invoice.id;
+
+        saleItemSelect.innerHTML = data.items.map(it => {
+          const available = it.quantity - Number(it.already_returned_units || 0);
+          return `<option value="${it.id}" data-max="${available}">${it.medicine_name_snapshot} - ${it.quantity} ${it.unit_label || unitLabelsJs[it.sale_unit] || it.sale_unit} (متاح للإرجاع: ${available}) - ${Number(it.total).toFixed(2)} ج.م</option>`;
+        }).join('');
+
+        returnForm.style.display = 'block';
+        updateMaxQty();
+      } catch (err) {
+        invoiceSearchStatus.textContent = 'حصل خطأ في البحث';
+        invoiceSearchStatus.className = 'scan-status err';
+      }
+    }
+
+    function updateMaxQty() {
+      const opt = saleItemSelect.options[saleItemSelect.selectedIndex];
+      if (!opt) return;
+      const max = opt.getAttribute('data-max');
+      if (max) {
+        returnQty.max = max;
+        returnQty.value = 1;
+      }
+    }
+
+    findInvoiceBtn.addEventListener('click', findInvoice);
+    invoiceIdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); findInvoice(); } });
+    saleItemSelect.addEventListener('change', updateMaxQty);
+  </script>
+</body>
+</html>

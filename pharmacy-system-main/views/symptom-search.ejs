@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>البحث بالحالة أو المادة الفعالة - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'symptom-search' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>البحث بالحالة أو المادة الفعالة</h1>
+        <p>اكتب الحالة (زي "برد"، "صداع"، "حرارة") أو اسم المادة الفعالة، وحدد سن المريض لو عايز فلترة أدق</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <form method="GET" action="/symptom-search" style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
+        <div class="field" style="flex:2; min-width:220px;">
+          <label>الحالة / العرض / المادة الفعالة</label>
+          <input type="text" name="q" value="<%= q %>" placeholder="مثال: برد، سخونية، باراسيتامول..." autofocus required>
+        </div>
+        <div class="field" style="flex:1; min-width:120px;">
+          <label>سن المريض (اختياري)</label>
+          <input type="number" step="0.5" min="0" name="age" value="<%= age %>" placeholder="بالسنة">
+        </div>
+        <button type="submit" class="btn">بحث</button>
+      </form>
+      <p style="color:var(--text-muted); font-size:13px; margin-top:10px;">
+        البحث بيدوّر في: الحالات المرضية المسجّلة على كل صنف، الاسم العلمي (المادة الفعالة)، والاسم التجاري.
+        لو محددت سن، أي صنف ليه حد سن أدنى/أقصى مسجّل ومش مناسب للسن ده هيتستبعد تلقائيًا.
+      </p>
+    </div>
+
+    <% if (q) { %>
+      <div class="card">
+        <h2>النتائج (<%= results.length %>)</h2>
+        <% if (results.length === 0) { %>
+          <div class="empty-state">
+            مفيش أصناف مطابقة. ممكن تكون مسجلتش الحالة دي على أي صنف لسه —
+            روح <a href="/products" style="color:var(--accent)">صفحة الأصناف</a> وضيف "الحالات المرضية" لكل دواء يعالجها.
+          </div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الاسم</th><th>الاسم العلمي</th><th>الحالات المسجّلة</th><th>السن المسموح</th><th>سعر الحبة</th><th>المخزون (حبة)</th></tr>
+            </thead>
+            <tbody>
+              <% results.forEach(p => { %>
+                <tr>
+                  <td data-label="الاسم">
+                    <%= p.name %>
+                    <% if (p.requires_prescription) { %> <span class="badge badge-pending">روشتة</span><% } %>
+                    <% if (p.controlled_substance) { %> <span class="badge badge-ignored">خاضع للرقابة</span><% } %>
+                  </td>
+                  <td style="color:var(--text-muted)" data-label="الاسم العلمي"><%= p.generic_name || '—' %></td>
+                  <td style="color:var(--text-muted); font-size:12px;" data-label="الحالات المسجّلة"><%= p.conditions_tags || '—' %></td>
+                  <td class="mono" data-label="السن المسموح">
+                    <% if (p.min_age_years == null && p.max_age_years == null) { %>
+                      كل الأعمار
+                    <% } else { %>
+                      <%= p.min_age_years != null ? p.min_age_years : '0' %> - <%= p.max_age_years != null ? p.max_age_years : '∞' %> سنة
+                    <% } %>
+                  </td>
+                  <td class="mono" data-label="سعر الحبة"><%= Number(p.sale_price_unit).toFixed(2) %></td>
+                  <td class="mono" style="<%= p.stock_units <= p.min_stock_units ? 'color:var(--amber)' : '' %>" data-label="المخزون"><%= p.stock_units %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>

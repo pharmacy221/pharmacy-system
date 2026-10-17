@@ -32,12 +32,28 @@ async function main() {
     console.log(`📦 دليل الأدوية: ${refs.length} صنف`);
 
     // الأصناف الموجودة بالفعل (بالاسم أو بالربط)
-    const { rows: existing } = await client.query('SELECT id, lower(name) AS lname, ref_id, form_kind FROM medicines');
+    const { rows: existing } = await client.query('SELECT id, lower(name) AS lname, ref_id, form_kind, dosage_form, stock_units FROM medicines WHERE is_active = true');
+    const refById = new Map(refs.map((d) => [d.id, d]));
     const byName = new Map(existing.map((m) => [m.lname, m]));
     const usedRef = new Set(existing.filter((m) => m.ref_id).map((m) => m.ref_id));
 
     const toInsert = [];
     const toTag = []; // أصناف موجودة بنفس الاسم: نسجّل نوعها بس
+    const toFix = []; // أصناف مستوردة قبل كده من الدليل: نصحّح نوعها (والتعبئة والسعر لو مخزونها 0)
+    for (const m of existing) {
+      const d = m.ref_id ? refById.get(m.ref_id) : null;
+      if (!d) continue;
+      const f = classifyDrug(d);
+      const kindChanged = m.form_kind !== f.kind;
+      if (!kindChanged && m.dosage_form === f.dosageForm) continue;
+      const box = Number(d.price_egp) || 0;
+      toFix.push({
+        id: m.id, kind: f.kind, form: f.dosageForm,
+        repack: kindChanged && Number(m.stock_units) === 0, // نغيّر التعبئة والأسعار بس لو مفيش مخزون
+        ups: f.unitsPerStrip, spb: f.stripsPerBox,
+        unit: r2(box / (f.unitsPerStrip * f.stripsPerBox)), strip: r2(box / f.stripsPerBox), box
+      });
+    }
     const seen = new Set();
     for (const d of refs) {
       const lname = d.name_en.trim().toLowerCase();
@@ -58,7 +74,7 @@ async function main() {
         unit: perUnit, strip: perStrip, box, ref_id: d.id
       });
     }
-    console.log(`➕ جديد: ${toInsert.length} | 🏷️ أصناف موجودة هنسجّل نوعها: ${toTag.length}`);
+    console.log(`➕ جديد: ${toInsert.length} | 🏷️ أصناف موجودة هنسجّل نوعها: ${toTag.length} | 🔧 تصحيح نوع: ${toFix.length}`);
 
     await client.query('BEGIN');
     for (let i = 0; i < toInsert.length; i += BATCH) {
@@ -87,6 +103,17 @@ async function main() {
         `UPDATE medicines SET form_kind = $2, dosage_form = COALESCE(dosage_form, $3), ref_id = COALESCE(ref_id, $4) WHERE id = $1`,
         [t.id, t.kind, t.form, t.ref_id]
       );
+    }
+    for (const t of toFix) {
+      if (t.repack) {
+        await client.query(
+          `UPDATE medicines SET form_kind = $2, dosage_form = $3, units_per_strip = $4, strips_per_box = $5,
+                  sale_price_unit = $6, sale_price_strip = $7, sale_price_box = $8 WHERE id = $1`,
+          [t.id, t.kind, t.form, t.ups, t.spb, t.unit, t.strip, t.box]
+        );
+      } else {
+        await client.query('UPDATE medicines SET form_kind = $2, dosage_form = $3 WHERE id = $1', [t.id, t.kind, t.form]);
+      }
     }
     await client.query('COMMIT');
 

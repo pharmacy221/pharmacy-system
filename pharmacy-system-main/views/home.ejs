@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الرئيسية - <%= typeof shopName !== 'undefined' ? shopName : '' %></title>
+  <%- include('partials/head') %>
+  <style>
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .quick-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 26px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color, #2a2f3a);
+      background: var(--card-bg, #171b24);
+      text-decoration: none;
+      color: var(--text, #e5e7eb);
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      text-align: center;
+    }
+    .quick-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent, #00d1b2);
+    }
+    .quick-card .icon { font-size: 30px; line-height: 1; }
+    .quick-card .label { font-size: 14px; font-weight: 600; }
+    .quick-section-title {
+      margin: 26px 0 12px;
+      font-size: 13px;
+      color: var(--text-muted, #64748b);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <% var active = 'home' %>
+  <%- include('partials/nav') %>
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>الرئيسية</h1>
+        <p>اختر الصفحة اللي عايز تفتحها</p>
+      </div>
+    </div>
+    <div class="quick-grid">
+      <a href="/pos" class="quick-card"><span class="icon">🧾</span><span class="label">الكاشير</span></a>
+      <a href="/shifts" class="quick-card"><span class="icon">⏱️</span><span class="label">الوردية</span></a>
+      <a href="/sales" class="quick-card"><span class="icon">💰</span><span class="label">فواتير البيع</span></a>
+      <a href="/returns" class="quick-card"><span class="icon">↩️</span><span class="label">المرتجعات</span></a>
+      <a href="/products" class="quick-card"><span class="icon">💊</span><span class="label">الأصناف والمخزون</span></a>
+      <a href="/products/batches" class="quick-card"><span class="icon">📦</span><span class="label">التشغيلات والصلاحية</span></a>
+      <a href="/symptom-search" class="quick-card"><span class="icon">🩺</span><span class="label">بحث بالحالة</span></a>
+    </div>
+    <% if (typeof role !== 'undefined' && role === 'admin') { %>
+      <div class="quick-section-title">أدوات الأدمن</div>
+      <div class="quick-grid">
+        <a href="/dashboard" class="quick-card"><span class="icon">📊</span><span class="label">لوحة التحكم</span></a>
+        <a href="/suppliers" class="quick-card"><span class="icon">🚚</span><span class="label">الموردين</span></a>
+        <a href="/coupons" class="quick-card"><span class="icon">🎟️</span><span class="label">الكوبونات</span></a>
+        <a href="/reports" class="quick-card"><span class="icon">📈</span><span class="label">التقارير</span></a>
+        <a href="/settings" class="quick-card"><span class="icon">⚙️</span><span class="label">الإعدادات</span></a>
+        <a href="/activity-log" class="quick-card"><span class="icon">📋</span><span class="label">سجل النشاطات</span></a>
+        <a href="/payroll" class="quick-card"><span class="icon">👥</span><span class="label">الموظفين والرواتب</span></a>
+        <a href="/expenses" class="quick-card"><span class="icon">💵</span><span class="label">المصروفات</span></a>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>

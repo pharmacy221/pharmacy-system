@@ -4,7 +4,7 @@ const express = require('express');
 const { query, queryOne } = require('../db');
 const { requireLogin, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
-const { FORMS, saleLevels } = require('../lib/drug-form');
+const { FORMS, FORM_ORDER, saleLevels } = require('../lib/drug-form');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -15,27 +15,48 @@ router.use((req, res, next) => {
   res.locals.pg = { page: 1, pages: 1, total: null, form: '', instock: false };
   res.locals.formKinds = Object.entries(FORMS).map(([key, f]) => ({ key, label: f.label }));
   res.locals.unitName = (p) => saleLevels(p).levels[0].label;
+  // اسم القسم/النوع اللي بيظهر جنب الصنف (حبوب / فوار / حقن ...)
+  res.locals.formLabel = (p) => (p.form_kind && FORMS[p.form_kind] ? FORMS[p.form_kind].label : 'غير مصنّف');
+  res.locals.groups = [];
   next();
 });
 
 const CATEGORIES = ['أدوية', 'مستحضرات تجميل', 'مكملات غذائية', 'أدوات طبية', 'رضاعة وأطفال', 'أخرى'];
 
-// بحث + فلتر نوع المنتج + المتاح فقط + ترقيم (الدليل فيه آلاف الأصناف)
-async function getMedicinesPage({ q, form, instock, page }) {
+// ترتيب الأقسام: حبوب ← فوار ← كبسول ← حقن ... (الأصناف بدون نوع في الآخر)
+const GROUP_ORDER_SQL = `COALESCE(array_position(ARRAY[${FORM_ORDER.map((k) => `'${k}'`).join(',')}]::text[], form_kind), 999)`;
+
+function buildWhere({ q, form, instock }) {
   const params = [];
   const where = ['is_active = true'];
   if (q && q.trim()) {
     params.push(`%${q.trim().replace(/[\\%_]/g, (c) => '\\' + c)}%`);
     where.push(`(name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1 OR conditions_tags ILIKE $1)`);
   }
-  if (form && FORMS[form]) { params.push(form); where.push(`form_kind = $${params.length}`); }
+  if (form === 'none') where.push('form_kind IS NULL');
+  else if (form && FORMS[form]) { params.push(form); where.push(`form_kind = $${params.length}`); }
   if (instock) where.push('stock_units > 0');
-  const w = where.join(' AND ');
+  return { w: where.join(' AND '), params };
+}
+
+// عدد الأصناف في كل قسم (بيحترم البحث و"المتاح فقط" بس مش فلتر القسم نفسه)
+async function getGroupCounts({ q, instock }) {
+  const { w, params } = buildWhere({ q, instock });
+  const rows = await query(`SELECT form_kind, COUNT(*)::int AS c FROM medicines WHERE ${w} GROUP BY form_kind`, params);
+  const byKind = new Map(rows.map((r) => [r.form_kind, r.c]));
+  const groups = FORM_ORDER.filter((k) => byKind.get(k)).map((k) => ({ key: k, label: FORMS[k].label, count: byKind.get(k) }));
+  if (byKind.get(null)) groups.push({ key: 'none', label: 'غير مصنّف', count: byKind.get(null) });
+  return groups;
+}
+
+// بحث + فلتر القسم + المتاح فقط + ترقيم (الدليل فيه آلاف الأصناف)
+async function getMedicinesPage({ q, form, instock, page }) {
+  const { w, params } = buildWhere({ q, form, instock });
   const total = (await queryOne(`SELECT COUNT(*)::int AS c FROM medicines WHERE ${w}`, params)).c;
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   const p = Math.min(Math.max(parseInt(page) || 1, 1), pages);
   const rows = await query(
-    `SELECT * FROM medicines WHERE ${w} ORDER BY lower(name) LIMIT ${PAGE_SIZE} OFFSET ${(p - 1) * PAGE_SIZE}`,
+    `SELECT * FROM medicines WHERE ${w} ORDER BY ${GROUP_ORDER_SQL}, lower(name) LIMIT ${PAGE_SIZE} OFFSET ${(p - 1) * PAGE_SIZE}`,
     params
   );
   return { rows, total, pages, page: p };
@@ -58,7 +79,11 @@ router.get('/', async (req, res, next) => {
   try {
     const form = req.query.form || '';
     const instock = req.query.instock === '1';
-    const r = await getMedicinesPage({ q: req.query.q, form, instock, page: req.query.page });
+    const [r, groups] = await Promise.all([
+      getMedicinesPage({ q: req.query.q, form, instock, page: req.query.page }),
+      getGroupCounts({ q: req.query.q, instock })
+    ]);
+    res.locals.groups = groups;
     res.locals.pg = { page: r.page, pages: r.pages, total: r.total, form, instock };
     res.render('products', { medicines: r.rows, categories: CATEGORIES, error: null, searchQuery: req.query.q || '', active: 'products' });
   } catch (err) {

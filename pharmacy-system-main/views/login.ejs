@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>تسجيل الدخول - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <span class="brand-mark">💊</span>
+      <h1>تسجيل الدخول</h1>
+      <p class="sub">نظام إدارة الصيدلية - المبيعات والمخزون والتشغيلات والصلاحية</p>
+
+      <% if (error) { %>
+        <div class="alert alert-error"><%= error %></div>
+      <% } %>
+
+      <form method="POST" action="/login">
+        <div class="field">
+          <label>اسم المستخدم</label>
+          <input type="text" name="username" required autofocus>
+        </div>
+        <div class="field">
+          <label>كلمة المرور</label>
+          <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn">دخول</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

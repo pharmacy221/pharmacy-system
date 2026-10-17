@@ -122,7 +122,93 @@
           <button type="submit" class="btn" style="white-space:nowrap;">إضافة موظف</button>
         </form>
       </div>
+
+      <div class="card" id="shortcuts" style="grid-column: 1 / -1;">
+        <h2>اختصارات الكيبورد</h2>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:-8px; margin-bottom:16px;">
+          اضغط على الخانة وبعدين اضغط المفاتيح اللي عاوزها (مثلًا <kbd>F9</kbd> أو <kbd>Ctrl</kbd>+<kbd>K</kbd>). الاختصار بيشتغل مع كل الموظفين.
+          <b>Backspace</b> يمسح الاختصار. الحروف والأرقام لازم معاها Ctrl أو Alt، وبتشتغل حتى لو الكيبورد عربي.
+        </p>
+        <form action="/settings/shortcuts" method="POST" id="scForm">
+          <% const groupsSeen = []; shortcutActions.forEach(a => { if (!groupsSeen.includes(a.group)) groupsSeen.push(a.group); }); %>
+          <% groupsSeen.forEach(g => { %>
+            <h3 style="margin:18px 0 8px; font-size:14px; color:var(--accent);"><%= g %></h3>
+            <table>
+              <tbody>
+                <% shortcutActions.filter(a => a.group === g).forEach(a => { %>
+                  <tr>
+                    <td data-label="الإجراء" style="width:45%;"><%= a.label %></td>
+                    <td data-label="الاختصار">
+                      <div style="display:flex; gap:6px; align-items:center;">
+                        <input type="text" readonly class="sc-input mono" name="sc_<%= a.id %>" data-id="<%= a.id %>"
+                          data-default="<%= shortcutDefaults[a.id] %>" value="<%= shortcutKeys[a.id] || '' %>"
+                          placeholder="اضغط هنا ثم المفاتيح" style="max-width:200px; text-align:center; cursor:pointer;" dir="ltr">
+                        <button type="button" class="btn-ghost-sm sc-clear" title="مسح الاختصار">مسح</button>
+                        <button type="button" class="btn-ghost-sm sc-default" title="الرجوع للافتراضي">افتراضي<%= shortcutDefaults[a.id] ? ' (' + shortcutDefaults[a.id] + ')' : ' (بدون)' %></button>
+                      </div>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% }) %>
+          <div id="scWarn" class="alert alert-error" style="display:none; margin-top:12px;"></div>
+          <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+            <button type="submit" class="btn" id="scSave">حفظ الاختصارات</button>
+            <button type="submit" class="btn-outline btn-sm" name="reset" value="1" onclick="return confirm('الرجوع لكل الاختصارات الافتراضية؟')" formnovalidate>رجوع للافتراضي</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
+
+  <script>
+    (function () {
+      var inputs = Array.prototype.slice.call(document.querySelectorAll('.sc-input'));
+      var warn = document.getElementById('scWarn');
+      var save = document.getElementById('scSave');
+
+      function validate() {
+        var seen = {}, dup = null;
+        inputs.forEach(function (i) {
+          i.style.borderColor = '';
+          if (!i.value) return;
+          if (seen[i.value]) { dup = i.value; seen[i.value].style.borderColor = 'var(--red, #e55)'; i.style.borderColor = 'var(--red, #e55)'; }
+          else seen[i.value] = i;
+        });
+        warn.style.display = dup ? '' : 'none';
+        warn.textContent = dup ? 'الاختصار ' + dup + ' متكرر في أكتر من إجراء — غيّر واحد منهم قبل الحفظ' : '';
+        save.disabled = !!dup;
+      }
+
+      inputs.forEach(function (inp) {
+        inp.addEventListener('focus', function () { Shortcuts.paused = true; inp.select(); });
+        inp.addEventListener('blur', function () { Shortcuts.paused = false; });
+        inp.addEventListener('keydown', function (e) {
+          if (e.key === 'Tab') return;
+          e.preventDefault(); e.stopPropagation();
+          if (e.key === 'Backspace' || e.key === 'Delete') { inp.value = ''; validate(); return; }
+          if (e.key === 'Escape') { inp.blur(); return; }
+          var combo = Shortcuts.comboOf(e);
+          if (!combo) return; // مفتاح تعديل لوحده (Ctrl/Alt/Shift)
+          var isF = /(?:^|\+)F\d+$/.test(combo);
+          var hasMod = /(?:^|\+)(?:Ctrl|Alt|Meta)\+/.test(combo);
+          var named = /(?:^|\+)(?:Insert|Delete|Home|End|PageUp|PageDown)$/.test(combo);
+          if (!isF && !named && !hasMod) {
+            warn.style.display = ''; warn.textContent = 'الحروف والأرقام لازم معاها Ctrl أو Alt';
+            return;
+          }
+          inp.value = combo; validate();
+        });
+      });
+      document.querySelectorAll('.sc-clear').forEach(function (b) {
+        b.addEventListener('click', function () { var i = b.closest('td').querySelector('.sc-input'); i.value = ''; validate(); });
+      });
+      document.querySelectorAll('.sc-default').forEach(function (b) {
+        b.addEventListener('click', function () { var i = b.closest('td').querySelector('.sc-input'); i.value = i.getAttribute('data-default') || ''; validate(); });
+      });
+      validate();
+    })();
+  </script>
 </body>
 </html>

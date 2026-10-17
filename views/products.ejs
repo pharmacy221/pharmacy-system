@@ -12,6 +12,18 @@
       color: var(--text-muted); cursor:pointer;
     }
     .btn-cam:hover { color: var(--accent); border-color: var(--accent); }
+    .group-chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+    .group-chips a {
+      display:inline-flex; gap:6px; align-items:center; padding:5px 12px; border-radius:999px; font-size:13px;
+      border:1px solid var(--border-color, #2a2f3a); color:var(--text-muted); text-decoration:none; background:var(--surface-2, #1c2129);
+    }
+    .group-chips a b { font-family:var(--mono, monospace); font-weight:600; font-size:12px; color:var(--text); }
+    .group-chips a:hover { border-color:var(--accent); color:var(--accent); }
+    .group-chips a.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .group-chips a.on b { color:#fff; }
+    tr.group-row td { background:var(--surface-2, #1c2129); color:var(--accent); font-weight:700; font-size:14px; padding:8px 12px; }
+    .kind-badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; margin-inline-start:6px;
+      background:rgba(99,179,237,.15); color:var(--accent); border:1px solid var(--accent); vertical-align:middle; }
     .camera-modal {
       position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:999;
       display:flex; align-items:center; justify-content:center;
@@ -42,6 +54,7 @@
         <% if (searchQuery) { %><a href="/products" class="btn-ghost-sm">إلغاء</a><% } %>
         <select name="form" style="max-width:160px;" onchange="this.form.submit()">
           <option value="">كل الأنواع</option>
+          <option value="none" <%= pg.form === 'none' ? 'selected' : '' %>>غير مصنّف</option>
           <% formKinds.forEach(k => { %><option value="<%= k.key %>" <%= pg.form === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %>
         </select>
         <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" name="instock" value="1" <%= pg.instock ? 'checked' : '' %> onchange="this.form.submit()"> المتاح فقط</label>
@@ -49,6 +62,17 @@
         <a href="/symptom-search" class="btn-ghost-sm">🩺 بحث بالحالة</a>
       </form>
     </div>
+
+    <% if (groups && groups.length) {
+         const gqs = (k) => '?' + new URLSearchParams({ q: searchQuery || '', form: k, instock: pg.instock ? '1' : '' }).toString();
+         const allCount = groups.reduce((a, g) => a + g.count, 0); %>
+      <div class="group-chips">
+        <a href="<%= gqs('') %>" class="<%= !pg.form ? 'on' : '' %>">الكل <b><%= allCount %></b></a>
+        <% groups.forEach(g => { %>
+          <a href="<%= gqs(g.key) %>" class="<%= pg.form === g.key ? 'on' : '' %>"><%= g.label %> <b><%= g.count %></b></a>
+        <% }) %>
+      </div>
+    <% } %>
 
     <div class="two-col">
       <div class="card">
@@ -61,10 +85,13 @@
               <tr><th>الاسم</th><th>الباركود</th><th>السريال</th><th>الفئة</th><th>الحالات</th><th>النوع</th><th>سعر الوحدة</th><th>المخزون</th><th></th></tr>
             </thead>
             <tbody>
-              <% medicines.forEach(p => { %>
+              <% let lastGroup = null; medicines.forEach(p => { %>
+                <% if (!pg.form && (p.form_kind || 'none') !== lastGroup) { lastGroup = p.form_kind || 'none'; %>
+                  <tr class="group-row"><td colspan="9"><%= formLabel(p) %></td></tr>
+                <% } %>
                 <tr>
                   <td data-label="الاسم">
-                    <%= p.name %>
+                    <%= p.name %><span class="kind-badge"><%= formLabel(p) %></span>
                     <% if (p.generic_name) { %><br><span style="color:var(--text-muted); font-size:12px;"><%= p.generic_name %></span><% } %>
                     <% if (p.requires_prescription) { %> <span class="badge badge-pending">روشتة</span><% } %>
                     <% if (p.controlled_substance) { %> <span class="badge badge-ignored">خاضع للرقابة</span><% } %>

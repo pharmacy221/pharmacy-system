@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>إيصال راتب - <%= employee.name %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <div class="no-print"><% var active = 'payroll' %><%- include('partials/nav') %></div>
+  <div class="page">
+    <div class="receipt-paper">
+      <div class="r-top">
+        <h2><%= shop.pharmacy_name || shopName %></h2>
+        <% if (shop.phone) { %><div><%= shop.phone %></div><% } %>
+        <div>إيصال قبض راتب</div>
+      </div>
+
+      <div class="r-meta">
+        <div class="r-meta-row"><span>الموظف</span><span><%= employee.name %></span></div>
+        <% if (employee.job_title) { %><div class="r-meta-row"><span>الوظيفة</span><span><%= employee.job_title %></span></div><% } %>
+        <div class="r-meta-row"><span>فترة الاستحقاق</span><span><%= new Date(payment.period_start).toLocaleDateString('ar-EG') %> - <%= new Date(payment.period_end).toLocaleDateString('ar-EG') %></span></div>
+        <div class="r-meta-row"><span>تاريخ القبض</span><span><%= new Date(payment.payment_date).toLocaleDateString('ar-EG') %></span></div>
+      </div>
+
+      <div class="r-sub"><span>الراتب الأساسي</span><span class="mono"><%= Number(payment.base_salary).toFixed(2) %></span></div>
+      <% if (Number(payment.bonus) > 0) { %><div class="r-sub"><span>بونص / حافز</span><span class="mono">+<%= Number(payment.bonus).toFixed(2) %></span></div><% } %>
+      <% if (Number(payment.other_deductions) > 0) { %><div class="r-sub"><span>خصومات إضافية</span><span class="mono">-<%= Number(payment.other_deductions).toFixed(2) %></span></div><% } %>
+      <% if (Number(payment.advances_deducted) > 0) { %><div class="r-sub"><span>سلف مخصومة</span><span class="mono">-<%= Number(payment.advances_deducted).toFixed(2) %></span></div><% } %>
+
+      <div class="r-grand"><span>الصافي المدفوع</span><span class="mono"><%= Number(payment.net_paid).toFixed(2) %></span></div>
+
+      <% if (settledAdvances.length > 0) { %>
+        <div style="margin-top:14px;">
+          <div class="section-title" style="font-size:12px;">تفاصيل السلف المخصومة</div>
+          <table class="cart-table">
+            <thead><tr><th>التاريخ</th><th>السبب</th><th>القيمة</th></tr></thead>
+            <tbody>
+              <% settledAdvances.forEach(a => { %>
+                <tr><td><%= new Date(a.advance_date).toLocaleDateString('ar-EG') %></td><td><%= a.reason || '-' %></td><td class="mono"><%= Number(a.amount).toFixed(2) %></td></tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <% if (payment.notes) { %><div class="r-meta-row" style="margin-top:10px;"><span>ملاحظات</span><span><%= payment.notes %></span></div><% } %>
+
+      <div class="receipt-actions no-print">
+        <button class="btn" onclick="window.print()">طباعة</button>
+        <a href="/payroll/<%= employee.id %>" class="btn-outline">رجوع لصفحة الموظف</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

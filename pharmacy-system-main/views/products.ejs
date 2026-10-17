@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الأصناف والمخزون - <%= shopName %></title>
+  <%- include('partials/head') %>
+  <style>
+    .scan-box { display:flex; gap:6px; align-items:center; }
+    .scan-box input { flex:1; }
+    .btn-cam {
+      flex-shrink:0; width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+      border-radius:6px; border:1px solid var(--border-color, #2a2f3a); background: var(--surface-2, #1c2129);
+      color: var(--text-muted); cursor:pointer;
+    }
+    .btn-cam:hover { color: var(--accent); border-color: var(--accent); }
+    .camera-modal {
+      position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:999;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .camera-modal-inner { background:var(--card-bg, #171b24); border-radius:12px; padding:16px; width:min(92vw, 420px); }
+    .camera-modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    #cameraReader { width:100%; border-radius:8px; overflow:hidden; }
+  </style>
+</head>
+<body>
+  <% var active = 'products' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>الأصناف والمخزون</h1>
+        <p>إدارة الأدوية والمستحضرات: الأسعار، وحدات البيع (حبة/شريط/علبة)، والمخزون</p>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="card" style="margin-bottom:16px;">
+      <form method="GET" action="/products" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input type="text" name="q" value="<%= searchQuery %>" placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود أو السريال أو الحالة المرضية..." style="flex:1; min-width:220px;">
+        <button type="submit" class="btn-outline btn-sm">بحث</button>
+        <% if (searchQuery) { %><a href="/products" class="btn-ghost-sm">إلغاء</a><% } %>
+        <select name="form" style="max-width:160px;" onchange="this.form.submit()">
+          <option value="">كل الأنواع</option>
+          <% formKinds.forEach(k => { %><option value="<%= k.key %>" <%= pg.form === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %>
+        </select>
+        <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" name="instock" value="1" <%= pg.instock ? 'checked' : '' %> onchange="this.form.submit()"> المتاح فقط</label>
+        <a href="/products/batches" class="btn-ghost-sm">📦 التشغيلات والصلاحية</a>
+        <a href="/symptom-search" class="btn-ghost-sm">🩺 بحث بالحالة</a>
+      </form>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>الأصناف (<%= pg.total != null ? pg.total : medicines.length %>)</h2>
+        <% if (medicines.length === 0) { %>
+          <div class="empty-state">مفيش أصناف مضافة لسه</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>الاسم</th><th>الباركود</th><th>السريال</th><th>الفئة</th><th>الحالات</th><th>النوع</th><th>سعر الوحدة</th><th>المخزون</th><th></th></tr>
+            </thead>
+            <tbody>
+              <% medicines.forEach(p => { %>
+                <tr>
+                  <td data-label="الاسم">
+                    <%= p.name %>
+                    <% if (p.generic_name) { %><br><span style="color:var(--text-muted); font-size:12px;"><%= p.generic_name %></span><% } %>
+                    <% if (p.requires_prescription) { %> <span class="badge badge-pending">روشتة</span><% } %>
+                    <% if (p.controlled_substance) { %> <span class="badge badge-ignored">خاضع للرقابة</span><% } %>
+                  </td>
+                  <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="الباركود"><%= p.barcode || '—' %></td>
+                  <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="السريال"><%= p.serial_number || '—' %></td>
+                  <td style="color:var(--text-muted)" data-label="الفئة"><%= p.category %></td>
+                  <td style="color:var(--text-muted); font-size:12px;" data-label="الحالات"><%= p.conditions_tags || '—' %></td>
+                  <td data-label="النوع" style="font-size:12px;"><%= p.dosage_form || '—' %></td>
+                  <td class="mono" data-label="سعر الوحدة"><%= Number(p.sale_price_unit).toFixed(2) %> <span style="color:var(--text-muted); font-size:11px;">/ <%= unitName(p) %></span></td>
+                  <td class="mono" style="<%= p.stock_units <= p.min_stock_units ? 'color:var(--amber)' : '' %>" data-label="المخزون"><%= p.stock_units %> <span style="font-size:11px; color:var(--text-muted);"><%= unitName(p) %></span></td>
+                  <td style="display:flex; gap:6px; flex-wrap:wrap;" data-label="إجراءات">
+                    <button type="button" class="btn-ghost-sm" onclick="document.getElementById('edit-<%= p.id %>').classList.toggle('open')">تعديل</button>
+                    <button type="button" class="btn-ghost-sm"
+                      onclick="printLabelForRow(<%- JSON.stringify(p.barcode || '') %>, <%- JSON.stringify(p.name) %>, <%- JSON.stringify(p.sale_price_unit) %>, <%- JSON.stringify(p.serial_number || '') %>)">
+                      🖨 ملصق
+                    </button>
+                    <form action="/products/<%= p.id %>/delete" method="POST" onsubmit="return confirm('تأكيد إلغاء تفعيل الصنف؟')">
+                      <button class="btn-ghost-sm" type="submit">إلغاء تفعيل</button>
+                    </form>
+                  </td>
+                </tr>
+                <tr id="edit-<%= p.id %>" class="edit-row">
+                  <td colspan="8">
+                    <form action="/products/<%= p.id %>/update" method="POST" class="form-grid" style="grid-template-columns: repeat(4, 1fr); align-items:end;">
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الاسم التجاري</label>
+                        <input type="text" name="name" id="name-edit-<%= p.id %>" value="<%= p.name %>" required>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الاسم العلمي</label>
+                        <input type="text" name="generic_name" value="<%= p.generic_name || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الفئة</label>
+                        <select name="category">
+                          <% categories.forEach(c => { %>
+                            <option value="<%= c %>" <%= p.category === c ? 'selected' : '' %>><%= c %></option>
+                          <% }) %>
+                        </select>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الشكل الدوائي</label>
+                        <input type="text" name="dosage_form" value="<%= p.dosage_form || '' %>" placeholder="أقراص / شراب / حقن...">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>نوع المنتج (يحدد وحدات البيع)</label>
+                        <select name="form_kind">
+                          <option value="">— بدون تغيير —</option>
+                          <% formKinds.forEach(k => { %><option value="<%= k.key %>" <%= p.form_kind === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %>
+                        </select>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الشركة المصنعة</label>
+                        <input type="text" name="manufacturer" value="<%= p.manufacturer || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>الباركود</label>
+                        <div class="scan-box">
+                          <input type="text" name="barcode" id="barcode-edit-<%= p.id %>" value="<%= p.barcode || '' %>" placeholder="امسحه بالكاميرا أو ولّده">
+                          <button type="button" class="btn-cam" data-target="barcode-edit-<%= p.id %>" title="مسح بالكاميرا">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                          </button>
+                          <button type="button" class="btn-cam" data-gen-barcode="barcode-edit-<%= p.id %>" title="توليد باركود عشوائي">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="4" y2="18"></line><line x1="8" y1="6" x2="8" y2="18"></line><line x1="11" y1="6" x2="11" y2="18"></line><line x1="15" y1="6" x2="15" y2="18"></line><line x1="17" y1="6" x2="17" y2="18"></line><line x1="20" y1="6" x2="20" y2="18"></line></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>السريال</label>
+                        <div class="scan-box">
+                          <input type="text" name="serial_number" id="serial-edit-<%= p.id %>" value="<%= p.serial_number || '' %>" placeholder="امسحه بالكاميرا أو ولّده">
+                          <button type="button" class="btn-cam" data-target="serial-edit-<%= p.id %>" title="مسح بالكاميرا">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                          </button>
+                          <button type="button" class="btn-cam" data-gen-serial="serial-edit-<%= p.id %>" title="توليد سريال عشوائي">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="4" y2="18"></line><line x1="8" y1="6" x2="8" y2="18"></line><line x1="11" y1="6" x2="11" y2="18"></line><line x1="15" y1="6" x2="15" y2="18"></line><line x1="17" y1="6" x2="17" y2="18"></line><line x1="20" y1="6" x2="20" y2="18"></line></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="field" style="margin-bottom:0; grid-column: span 2;">
+                        <label>الحالات المرضية (افصل بفاصلة)</label>
+                        <input type="text" name="conditions_tags" value="<%= p.conditions_tags || '' %>" placeholder="مثال: برد, صداع, حرارة">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>أقل سن مسموح (اختياري)</label>
+                        <input type="number" step="0.5" min="0" name="min_age_years" value="<%= p.min_age_years != null ? p.min_age_years : '' %>" placeholder="بالسنة">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>أقصى سن مسموح (اختياري)</label>
+                        <input type="number" step="0.5" min="0" name="max_age_years" value="<%= p.max_age_years != null ? p.max_age_years : '' %>" placeholder="بالسنة">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>تاريخ صلاحية (للطباعة على الملصق فقط)</label>
+                        <input type="date" id="expiry-edit-<%= p.id %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>عدد الحبات بالشريط</label>
+                        <input type="number" min="1" name="units_per_strip" value="<%= p.units_per_strip %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>عدد الشرائط بالعلبة</label>
+                        <input type="number" min="1" name="strips_per_box" value="<%= p.strips_per_box %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر بيع الحبة</label>
+                        <input type="number" step="0.01" name="sale_price_unit" id="price-edit-<%= p.id %>" value="<%= p.sale_price_unit %>" required>
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر بيع الشريط (اختياري)</label>
+                        <input type="number" step="0.01" name="sale_price_strip" value="<%= p.sale_price_strip || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر بيع العلبة (اختياري)</label>
+                        <input type="number" step="0.01" name="sale_price_box" value="<%= p.sale_price_box || '' %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>سعر تكلفة الحبة</label>
+                        <input type="number" step="0.01" name="cost_price_unit" value="<%= p.cost_price_unit %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>حد التنبيه (بالحبة)</label>
+                        <input type="number" name="min_stock_units" value="<%= p.min_stock_units %>">
+                      </div>
+                      <div class="field" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="requires_prescription" style="width:auto;" <%= p.requires_prescription ? 'checked' : '' %>>
+                        <label style="margin:0;">يحتاج روشتة</label>
+                      </div>
+                      <div class="field" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="controlled_substance" style="width:auto;" <%= p.controlled_substance ? 'checked' : '' %>>
+                        <label style="margin:0;">خاضع للرقابة</label>
+                      </div>
+                      <div style="display:flex; gap:8px;">
+                        <button type="submit" class="btn btn-sm">حفظ</button>
+                        <button type="button" class="btn-outline btn-sm"
+                          onclick="printBarcodeLabel('barcode-edit-<%= p.id %>','name-edit-<%= p.id %>','price-edit-<%= p.id %>','expiry-edit-<%= p.id %>','serial-edit-<%= p.id %>')">
+                          🖨 طباعة ملصق
+                        </button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+          <% if (pg.pages > 1) { const qs = (n) => '?' + new URLSearchParams({ q: searchQuery || '', form: pg.form || '', instock: pg.instock ? '1' : '', page: n }).toString(); %>
+            <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:14px;">
+              <% if (pg.page > 1) { %><a class="btn-ghost-sm" href="<%= qs(pg.page - 1) %>">السابق</a><% } %>
+              <span style="color:var(--text-muted); font-size:13px;">صفحة <%= pg.page %> من <%= pg.pages %></span>
+              <% if (pg.page < pg.pages) { %><a class="btn-ghost-sm" href="<%= qs(pg.page + 1) %>">التالي</a><% } %>
+            </div>
+          <% } %>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>إضافة صنف جديد</h2>
+        <form action="/products/add" method="POST" class="form-grid" style="grid-template-columns: repeat(2, 1fr);">
+          <div class="field">
+            <label>الاسم التجاري</label>
+            <input type="text" name="name" id="name-add" required placeholder="مثال: بانادول اكسترا">
+          </div>
+          <div class="field">
+            <label>الاسم العلمي (المادة الفعالة)</label>
+            <input type="text" name="generic_name" placeholder="مثال: باراسيتامول">
+          </div>
+          <div class="field">
+            <label>الفئة</label>
+            <select name="category">
+              <% categories.forEach(c => { %>
+                <option value="<%= c %>"><%= c %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="field">
+            <label>الشكل الدوائي</label>
+            <input type="text" name="dosage_form" placeholder="أقراص / شراب / حقن...">
+          </div>
+          <div class="field">
+            <label>نوع المنتج (يحدد وحدات البيع)</label>
+            <select name="form_kind">
+              <option value="">— حبة / شريط / علبة (عادي) —</option>
+              <% formKinds.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %>
+            </select>
+          </div>
+          <div class="field">
+            <label>الشركة المصنعة</label>
+            <input type="text" name="manufacturer">
+          </div>
+          <div class="field">
+            <label>الباركود (اختياري)</label>
+            <div class="scan-box">
+              <input type="text" name="barcode" id="barcode-add" placeholder="امسحه بالكاميرا أو ولّده تلقائيًا">
+              <button type="button" class="btn-cam" data-target="barcode-add" title="مسح بالكاميرا">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+              </button>
+              <button type="button" class="btn-cam" data-gen-barcode="barcode-add" title="توليد باركود عشوائي">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="4" y2="18"></line><line x1="8" y1="6" x2="8" y2="18"></line><line x1="11" y1="6" x2="11" y2="18"></line><line x1="15" y1="6" x2="15" y2="18"></line><line x1="17" y1="6" x2="17" y2="18"></line><line x1="20" y1="6" x2="20" y2="18"></line></svg>
+              </button>
+            </div>
+            <small style="color:var(--text-muted);">لو مسحته بالكاميرا مش هيلاقي حاجة (منتج جديد)، اضغط على زرار التوليد ✨ يديك كود عشوائي فريد.</small>
+          </div>
+          <div class="field">
+            <label>السريال (اختياري)</label>
+            <div class="scan-box">
+              <input type="text" name="serial_number" id="serial-add" placeholder="امسحه بالكاميرا أو ولّده تلقائيًا">
+              <button type="button" class="btn-cam" data-target="serial-add" title="مسح بالكاميرا">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+              </button>
+              <button type="button" class="btn-cam" data-gen-serial="serial-add" title="توليد سريال عشوائي">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="4" y2="18"></line><line x1="8" y1="6" x2="8" y2="18"></line><line x1="11" y1="6" x2="11" y2="18"></line><line x1="15" y1="6" x2="15" y2="18"></line><line x1="17" y1="6" x2="17" y2="18"></line><line x1="20" y1="6" x2="20" y2="18"></line></svg>
+              </button>
+            </div>
+            <small style="color:var(--text-muted);">رقم سريال داخلي مستقل عن الباركود (لتتبّع القطعة/العبوة بدقة أكتر).</small>
+          </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <label>الحالات المرضية (افصل بفاصلة)</label>
+            <input type="text" name="conditions_tags" placeholder="مثال: برد, صداع, حرارة">
+            <small style="color:var(--text-muted);">دي اللي بتظهر بيها الصنف ده في صفحة "بحث بالحالة"، غير البحث بالمادة الفعالة اللي فوق.</small>
+          </div>
+          <div class="field">
+            <label>أقل سن مسموح (اختياري)</label>
+            <input type="number" step="0.5" min="0" name="min_age_years" placeholder="بالسنة">
+          </div>
+          <div class="field">
+            <label>أقصى سن مسموح (اختياري)</label>
+            <input type="number" step="0.5" min="0" name="max_age_years" placeholder="بالسنة">
+          </div>
+          <div class="field">
+            <label>تاريخ صلاحية (للطباعة على الملصق فقط، مش هيتحفظ هنا)</label>
+            <input type="date" id="expiry-add">
+          </div>
+          <div class="field">
+            <label>عدد الحبات بالشريط</label>
+            <input type="number" min="1" name="units_per_strip" value="1">
+          </div>
+          <div class="field">
+            <label>عدد الشرائط بالعلبة</label>
+            <input type="number" min="1" name="strips_per_box" value="1">
+          </div>
+          <div class="field">
+            <label>سعر بيع الحبة</label>
+            <input type="number" step="0.01" name="sale_price_unit" id="price-add" required placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>سعر بيع الشريط (اختياري، بيتحسب تلقائي لو فاضي)</label>
+            <input type="number" step="0.01" name="sale_price_strip" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>سعر بيع العلبة (اختياري)</label>
+            <input type="number" step="0.01" name="sale_price_box" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>سعر تكلفة الحبة</label>
+            <input type="number" step="0.01" name="cost_price_unit" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>المخزون الافتتاحي (بالحبة)</label>
+            <input type="number" name="stock_units" value="0">
+          </div>
+          <div class="field">
+            <label>حد التنبيه (بالحبة)</label>
+            <input type="number" name="min_stock_units" value="10">
+          </div>
+          <div class="field" style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" name="requires_prescription" style="width:auto;">
+            <label style="margin:0;">يحتاج روشتة</label>
+          </div>
+          <div class="field" style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" name="controlled_substance" style="width:auto;">
+            <label style="margin:0;">خاضع للرقابة</label>
+          </div>
+          <div style="grid-column: 1 / -1; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="submit" class="btn">إضافة الصنف</button>
+            <button type="button" class="btn-outline"
+              onclick="printBarcodeLabel('barcode-add','name-add','price-add','expiry-add','serial-add')">
+              🖨 طباعة ملصق الباركود
+            </button>
+          </div>
+        </form>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:12px;">
+          ملحوظة: المخزون بيتحدّث تلقائيًا بعد كده من خلال <a href="/products/batches" style="color:var(--accent)">استلام التشغيلات</a> (توريد بضاعة جديدة بتاريخ صلاحية).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- مودال مسح الباركود/السريال بالكاميرا (مشترك لكل الحقول) -->
+  <div id="cameraModal" class="camera-modal" style="display:none;">
+    <div class="camera-modal-inner">
+      <div class="camera-modal-header">
+        <span>وجّه الكاميرا على الباركود</span>
+        <button type="button" id="closeCameraBtn" class="btn-ghost-sm">إغلاق</button>
+      </div>
+      <div id="cameraReader"></div>
+      <div id="cameraScanStatus" class="scan-status"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    const pharmacyName = <%- JSON.stringify(shopName) %>;
+
+    function playBeep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = 1200;
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+        osc.onended = () => ctx.close();
+      } catch (err) { /* المتصفح مش داعم للصوت، تجاهل */ }
+    }
+
+    // ============ توليد باركود عشوائي (EAN-13 صحيح الرقم الرقابي) ============
+    function ean13CheckDigit(digits12) {
+      let sum = 0;
+      for (let i = 0; i < 12; i++) {
+        sum += parseInt(digits12[i], 10) * (i % 2 === 0 ? 1 : 3);
+      }
+      return (10 - (sum % 10)) % 10;
+    }
+
+    function generateBarcodeNumber() {
+      const prefix = '20'; // بادئة الأكواد الداخلية (منتجات بدون باركود تجاري رسمي)
+      const timePart = Date.now().toString().slice(-8);
+      const randPart = Math.floor(10 + Math.random() * 90).toString();
+      const digits12 = (prefix + timePart + randPart).slice(0, 12);
+      return digits12 + ean13CheckDigit(digits12);
+    }
+
+    // ============ توليد رقم سريال عشوائي (مش لازم يبقى EAN، مجرد كود تتبّع داخلي) ============
+    function generateSerialNumber() {
+      const timePart = Date.now().toString(36).toUpperCase();
+      const randPart = Math.random().toString(36).slice(2, 6).toUpperCase();
+      return 'SN-' + timePart + '-' + randPart;
+    }
+
+    document.querySelectorAll('.btn-cam[data-gen-barcode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.genBarcode);
+        if (input) {
+          input.value = generateBarcodeNumber();
+          playBeep();
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-cam[data-gen-serial]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.genSerial);
+        if (input) {
+          input.value = generateSerialNumber();
+          playBeep();
+        }
+      });
+    });
+
+    // ============ مسح الباركود/السريال بكاميرا الموبايل/الجهاز ============
+    const cameraModal = document.getElementById('cameraModal');
+    const closeCameraBtn = document.getElementById('closeCameraBtn');
+    const cameraScanStatus = document.getElementById('cameraScanStatus');
+    let html5QrCode = null;
+    let cameraBusy = false;
+    let cameraTargetInput = null;
+
+    function showCameraStatus(msg, type) {
+      cameraScanStatus.textContent = msg;
+      cameraScanStatus.className = 'scan-status ' + (type || '');
+    }
+
+    async function startCamera(targetId) {
+      cameraTargetInput = document.getElementById(targetId);
+      if (typeof Html5Qrcode === 'undefined') {
+        alert('تعذر تحميل مكتبة الكاميرا، تأكد من الاتصال بالإنترنت');
+        return;
+      }
+      cameraModal.style.display = 'flex';
+      cameraBusy = false;
+      html5QrCode = new Html5Qrcode('cameraReader');
+      try {
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 260, height: 160 } },
+          async (decodedText) => {
+            if (cameraBusy) return;
+            cameraBusy = true;
+            playBeep();
+            if (cameraTargetInput) {
+              cameraTargetInput.value = decodedText.trim();
+            }
+            showCameraStatus('تم مسح الكود بنجاح', 'ok');
+            await stopCamera();
+          },
+          () => { /* تجاهل أخطاء الفريمات اللي مفيهاش كود */ }
+        );
+      } catch (err) {
+        showCameraStatus('تعذر فتح الكاميرا، تأكد من السماح بصلاحية الكاميرا', 'err');
+      }
+    }
+
+    async function stopCamera() {
+      cameraModal.style.display = 'none';
+      cameraBusy = false;
+      if (html5QrCode) {
+        try {
+          const state = html5QrCode.getState ? html5QrCode.getState() : null;
+          if (state === 2) await html5QrCode.stop();
+          html5QrCode.clear();
+        } catch (err) { /* الكاميرا كانت أصلاً متقفلة */ }
+        html5QrCode = null;
+      }
+      if (cameraTargetInput) cameraTargetInput.focus();
+      cameraTargetInput = null;
+    }
+
+    document.querySelectorAll('.btn-cam[data-target]').forEach(btn => {
+      btn.addEventListener('click', () => startCamera(btn.dataset.target));
+    });
+    closeCameraBtn.addEventListener('click', stopCamera);
+
+    // ============ طباعة ملصق الباركود (اسم الصيدلية + السعر + الصلاحية + السريال) ============
+    let barcodeLibLoaded = false;
+    function loadBarcodeLib() {
+      return new Promise((resolve, reject) => {
+        if (typeof JsBarcode !== 'undefined') return resolve();
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('تعذر تحميل مكتبة الباركود'));
+        document.head.appendChild(script);
+      });
+    }
+
+    async function printLabel(barcode, name, price, expiryDate, serial) {
+      if (!barcode) {
+        alert('محتاج باركود عشان تطبع الملصق، امسحه بالكاميرا أو ولّده أولاً');
+        return;
+      }
+      try {
+        await loadBarcodeLib();
+      } catch (err) {
+        alert('تعذر تحميل مكتبة طباعة الباركود، تأكد من الاتصال بالإنترنت');
+        return;
+      }
+
+      const priceLine = price ? Number(price).toFixed(2) + ' ج.م' : '';
+      const expiryLine = expiryDate ? new Date(expiryDate).toLocaleDateString('ar-EG') : '';
+      const serialLine = serial ? 'SN: ' + serial : '';
+
+      // ملصق أعرض شوية (65mm بدل 60mm) وهامش أكبر على شمال الباركود
+      // عشان أول رقم في EAN-13 (اللي بيترسم برّه الأعمدة نفسها) ميتقصّش وقت الطباعة
+      const printWindow = window.open('', '_blank', 'width=440,height=380');
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8">
+          <title>ملصق باركود</title>
+          <style>
+            @page { size: 65mm 42mm; margin: 0; }
+            html, body { margin:0; padding:0; width:65mm; height:42mm; overflow:visible; }
+            body {
+              box-sizing:border-box; padding:2mm 3mm; font-family: 'Cairo', Tahoma, sans-serif;
+              text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            }
+            .label-shop { font-size:9px; font-weight:700; margin:0 0 1px; }
+            .label-name { font-size:10px; margin:0 0 2px; max-width:59mm; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+            .label-meta { display:flex; justify-content:space-between; width:59mm; font-size:9px; margin-top:2px; }
+            .label-serial { font-size:8px; color:#333; margin-top:1px; direction:ltr; }
+            svg { max-width:59mm; overflow:visible; }
+          </style>
+        </head>
+        <body>
+          <div class="label-shop">${pharmacyName}</div>
+          <div class="label-name">${name || ''}</div>
+          <svg id="barcodeSvg"></svg>
+          <div class="label-meta">
+            <span>${priceLine}</span>
+            <span>${expiryLine ? 'صلاحية: ' + expiryLine : ''}</span>
+          </div>
+          ${serialLine ? `<div class="label-serial">${serialLine}</div>` : ''}
+          <script src="https://unpkg.com/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+          <script>
+            const isNumeric = /^[0-9]{13}$/.test("${barcode}");
+            JsBarcode("#barcodeSvg", "${barcode}", {
+              format: isNumeric ? "EAN13" : "CODE128",
+              width: 1.7, height: 38, fontSize: 12, textMargin: 2,
+              margin: 6, marginLeft: 16, marginRight: 6
+            });
+            window.onload = () => setTimeout(() => window.print(), 300);
+          <\/script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+
+    // طباعة من فورم الإضافة/التعديل: لو مفيش باركود مكتوب، ولّد واحد جديد أوتوماتيك قبل الطباعة
+    async function printBarcodeLabel(barcodeInputId, nameInputId, priceInputId, expiryInputId, serialInputId) {
+      const barcodeEl = document.getElementById(barcodeInputId);
+      const nameEl = document.getElementById(nameInputId);
+      const priceEl = document.getElementById(priceInputId);
+      const expiryEl = document.getElementById(expiryInputId);
+      const serialEl = serialInputId ? document.getElementById(serialInputId) : null;
+
+      if (barcodeEl && !barcodeEl.value.trim()) {
+        barcodeEl.value = generateBarcodeNumber();
+      }
+
+      await printLabel(
+        barcodeEl ? barcodeEl.value.trim() : '',
+        nameEl ? nameEl.value.trim() : '',
+        priceEl ? priceEl.value : '',
+        expiryEl ? expiryEl.value : '',
+        serialEl ? serialEl.value.trim() : ''
+      );
+    }
+
+    // طباعة من صف صنف موجود بالفعل في الجدول (بيانات محفوظة أصلاً)
+    async function printLabelForRow(barcode, name, price, serial) {
+      let finalBarcode = barcode;
+      if (!finalBarcode) {
+        finalBarcode = generateBarcodeNumber();
+        alert('الصنف ده مالوش باركود محفوظ، اتولّد له كود جديد: ' + finalBarcode + '\nملحوظة: الكود ده مش هيتحفظ للصنف تلقائيًا، افتح "تعديل" وحطه في خانة الباركود واحفظ لو عايز يفضل ثابت.');
+      }
+      const expiry = window.prompt('تاريخ الصلاحية اللي هيظهر على الملصق (اختياري، بصيغة YYYY-MM-DD) — سيبها فاضية لو مش عايز تظهر:', '');
+      await printLabel(finalBarcode, name, price, expiry, serial);
+    }
+  </script>
+</body>
+</html>

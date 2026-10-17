@@ -4,10 +4,25 @@ const bcrypt = require('bcryptjs');
 const { query, queryOne } = require('../db');
 const { requireLogin, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
+const { ACTIONS, DEFAULTS, normalizeCombo, getShortcuts, saveShortcuts } = require('../lib/shortcuts');
 
 const router = express.Router();
 router.use(requireLogin);
 router.use(requireAdmin);
+
+// بيانات الاختصارات متاحة لكل render في صفحة الإعدادات (حتى لو رجع بخطأ)
+router.use(async (req, res, next) => {
+  try {
+    const keys = await getShortcuts(true);
+    res.locals.shortcutActions = ACTIONS;
+    res.locals.shortcutDefaults = DEFAULTS;
+    res.locals.shortcutKeys = keys;
+    res.locals.scConfig = { keys, nav: res.locals.scConfig ? res.locals.scConfig.nav : {} };
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 async function getPharmacySettings() {
   const rows = await query(`SELECT key, value FROM settings WHERE key IN ('pharmacy_name', 'pharmacy_phone', 'pharmacy_address')`);
@@ -39,7 +54,44 @@ router.get('/', async (req, res, next) => {
     const employees = await getEmployees();
     const payrollEmployees = await getPayrollEmployees();
     const pharmacySettings = await getPharmacySettings();
-    res.render('settings', { user, employees, payrollEmployees, pharmacySettings, error: null, success: null, active: 'settings' });
+    const msgs = { sc_saved: 'تم حفظ الاختصارات', sc_reset: 'تم الرجوع للاختصارات الافتراضية' };
+    res.render('settings', {
+      user, employees, payrollEmployees, pharmacySettings,
+      error: req.query.sc_error ? String(req.query.sc_error).slice(0, 200) : null,
+      success: msgs[req.query.msg] || null,
+      active: 'settings'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// حفظ اختصارات الكيبورد (الفورم بيبعت sc_<id> لكل إجراء؛ الفاضي = الاختصار معطّل)
+router.post('/shortcuts', async (req, res, next) => {
+  try {
+    if (req.body.reset === '1') {
+      await saveShortcuts({ ...DEFAULTS });
+      await logActivity(req, { action: 'إرجاع اختصارات الكيبورد للافتراضي', entityType: 'settings' });
+      return res.redirect('/settings?msg=sc_reset#shortcuts');
+    }
+    const map = {};
+    const used = new Map();
+    for (const a of ACTIONS) {
+      const n = normalizeCombo(req.body['sc_' + a.id]);
+      if (n === null) {
+        return res.redirect('/settings?sc_error=' + encodeURIComponent(`الاختصار "${req.body['sc_' + a.id]}" غير صالح (${a.label}). الحروف والأرقام لازم معاها Ctrl أو Alt`) + '#shortcuts');
+      }
+      if (n) {
+        if (used.has(n)) {
+          return res.redirect('/settings?sc_error=' + encodeURIComponent(`الاختصار ${n} مكرر في "${used.get(n)}" و"${a.label}"`) + '#shortcuts');
+        }
+        used.set(n, a.label);
+      }
+      map[a.id] = n;
+    }
+    await saveShortcuts(map);
+    await logActivity(req, { action: 'تعديل اختصارات الكيبورد', entityType: 'settings' });
+    res.redirect('/settings?msg=sc_saved#shortcuts');
   } catch (err) {
     next(err);
   }

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>المصروفات العامة - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'expenses' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>المصروفات العامة</h1>
+        <p>إيجار، كهرباء، مياه، صيانة... إلخ — منفصلة عن رواتب الموظفين</p>
+      </div>
+      <a href="/payroll" class="btn-outline">👥 الموظفين والرواتب</a>
+    </div>
+
+    <div class="card">
+      <form method="GET" class="range-form">
+        <div class="field"><label>من تاريخ</label><input type="date" name="from" value="<%= from %>"></div>
+        <div class="field"><label>إلى تاريخ</label><input type="date" name="to" value="<%= to %>"></div>
+        <button type="submit" class="btn-outline btn-sm">تحديث</button>
+      </form>
+      <div class="stat-card" style="margin-top:14px;">
+        <div class="label">إجمالي المصروفات في الفترة</div>
+        <div class="value err mono"><%= total.toFixed(2) %> ج.م</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>تسجيل مصروف جديد</h2>
+        <form method="POST" action="/expenses/add" class="form-grid">
+          <div class="field">
+            <label>التصنيف</label>
+            <select name="category_id">
+              <option value="">-- اختر --</option>
+              <% categories.forEach(c => { %>
+                <option value="<%= c.id %>"><%= c.name %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="field"><label>أو تصنيف جديد</label><input type="text" name="new_category_name" placeholder="اكتب اسم تصنيف جديد لو مش موجود"></div>
+          <div class="field"><label>القيمة *</label><input type="number" step="0.01" name="amount" required></div>
+          <div class="field"><label>التاريخ</label><input type="date" name="expense_date" value="<%= new Date().toISOString().slice(0,10) %>"></div>
+          <div class="field"><label>ملاحظات</label><input type="text" name="notes"></div>
+          <button type="submit" class="btn">تسجيل</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>حسب التصنيف</h2>
+        <table>
+          <thead><tr><th>التصنيف</th><th>الإجمالي</th></tr></thead>
+          <tbody>
+            <% byCategory.forEach(c => { %>
+              <tr><td><%= c.category_name %></td><td class="mono"><%= Number(c.total).toFixed(2) %></td></tr>
+            <% }) %>
+            <% if (byCategory.length === 0) { %><tr><td colspan="2" class="empty-state">مفيش مصروفات في الفترة دي</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>كل المصروفات (<%= expensesList.length %>)</h2>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>التاريخ</th><th>التصنيف</th><th>القيمة</th><th>ملاحظات</th><th></th></tr></thead>
+          <tbody>
+            <% expensesList.forEach(e => { %>
+              <tr>
+                <td><%= new Date(e.expense_date).toLocaleDateString('ar-EG') %></td>
+                <td><%= e.category_name || e.category_name_snapshot || '-' %></td>
+                <td class="mono"><%= Number(e.amount).toFixed(2) %></td>
+                <td><%= e.notes || '-' %></td>
+                <td>
+                  <form method="POST" action="/expenses/<%= e.id %>/delete" style="display:inline" onsubmit="return confirm('حذف المصروف؟');">
+                    <button type="submit" class="btn-danger btn-sm">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+            <% if (expensesList.length === 0) { %><tr><td colspan="5" class="empty-state">مفيش مصروفات مسجلة</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

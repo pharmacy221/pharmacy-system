@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>دليل الأدوية المصرية - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'drug-lookup' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>دليل الأدوية المصرية</h1>
+        <p>ابحث بالاسم التجاري (عربي أو إنجليزي) أو بالمادة الفعالة، وشوف السعر والشركة والبدائل، وضيف الدواء لمخزونك بضغطة</p>
+      </div>
+    </div>
+
+    <% if (msg === 'notfound') { %>
+      <div class="card" style="border-color:var(--amber)">الصنف ده مش موجود في الدليل.</div>
+    <% } %>
+
+    <% if (msg === 'barcode_dup') { %>
+      <div class="card" style="border-color:var(--amber)">الباركود ده مستخدم لصنف تاني في المخزون — اتأكد منه وجرّب تاني.</div>
+    <% } %>
+
+    <div class="card">
+      <form method="GET" action="/drug-lookup" style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
+        <div class="field" style="flex:1; min-width:240px;">
+          <label>اسم الدواء أو المادة الفعالة</label>
+          <input type="text" name="q" value="<%= q %>" placeholder="مثال: بنادول، panadol 500، paracetamol، أوجمنتين..." autofocus required>
+        </div>
+        <button type="submit" class="btn">بحث</button>
+      </form>
+      <p style="color:var(--text-muted); font-size:13px; margin-top:10px;">
+        تقدر تكتب أكتر من كلمة (زي "بنادول اكسترا") وهيجيب الأصناف اللي فيها كل الكلمات دي.
+        الأسعار من قاعدة بيانات مفتوحة وممكن تتأخر عن آخر تسعير رسمي من هيئة الدواء المصرية — راجعها قبل ما تعتمد عليها في البيع.
+      </p>
+    </div>
+
+    <% if (notReady) { %>
+      <div class="card">
+        <div class="empty-state">
+          دليل الأدوية لسه مش متركّب على قاعدة البيانات. شغّل ملف <span class="mono">db/drug_reference.sql</span> في Supabase،
+          وبعدها شغّل الأمر <span class="mono">npm run import-drugs</span> مرة واحدة.
+        </div>
+      </div>
+    <% } else if (q || alt) { %>
+      <div class="card">
+        <h2>
+          <% if (alt) { %>
+            البدائل بنفس المادة الفعالة (<%= results.length %>) — مرتبة من الأرخص
+          <% } else { %>
+            النتائج (<%= results.length %><%= results.length >= limit ? '+' : '' %>)
+          <% } %>
+        </h2>
+        <% if (alt) { %>
+          <p class="mono" style="color:var(--text-muted); direction:ltr; text-align:right; font-size:12px;"><%= alt %></p>
+          <p><a href="/drug-lookup" style="color:var(--accent)">← رجوع للبحث</a></p>
+        <% } %>
+        <% if (approx) { %>
+          <p style="color:var(--amber); font-size:13px;">مفيش تطابق حرفي لـ "<%= q %>" — دي نتائج تقريبية.</p>
+        <% } %>
+        <% if (results.length >= limit && !alt) { %>
+          <p style="color:var(--text-muted); font-size:13px;">اتعرض أول <%= limit %> نتيجة بس — زوّد كلمات في البحث عشان تضيّق النتائج.</p>
+        <% } %>
+
+        <% if (results.length === 0) { %>
+          <div class="empty-state">مفيش نتائج مطابقة. جرّب اسم تاني أو اكتب المادة الفعالة بالإنجليزي.</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr>
+                <th>الاسم</th><th>المادة الفعالة</th><th>الشركة</th><th>التصنيف</th><th>السعر</th><th>عندك</th>
+                <% if (canAdd) { %><th>إضافة للمخزون</th><% } %>
+              </tr>
+            </thead>
+            <tbody>
+              <% results.forEach(d => { %>
+                <tr>
+                  <td data-label="الاسم">
+                    <strong><%= d.name_ar || d.name_en %></strong>
+                    <div style="color:var(--text-muted); font-size:12px; direction:ltr; text-align:right;"><%= d.name_en %></div>
+                    <% if (d.form.label) { %><span class="badge" style="margin-top:4px;"><%= d.form.label %></span><% } %>
+                  </td>
+                  <td style="font-size:12px; direction:ltr; text-align:right;" data-label="المادة الفعالة">
+                    <% if (d.scientific_name) { %>
+                      <a href="/drug-lookup?alt=<%= encodeURIComponent(d.scientific_name) %>" style="color:var(--accent)" title="عرض البدائل"><%= d.scientific_name %></a>
+                    <% } else { %>—<% } %>
+                  </td>
+                  <td style="color:var(--text-muted); font-size:12px;" data-label="الشركة"><%= d.manufacturer || '—' %></td>
+                  <td style="color:var(--text-muted); font-size:12px;" data-label="التصنيف"><%= d.drug_class || '—' %></td>
+                  <td class="mono" data-label="السعر"><%= d.price_egp != null ? Number(d.price_egp).toFixed(2) : '—' %><% if (d.form.label) { %> <span style="color:var(--text-muted); font-size:11px;">/ <%= d.form.label %></span><% } %></td>
+                  <td data-label="عندك">
+                    <% if (d.inv_id) { %>
+                      <a href="/products?q=<%= encodeURIComponent(d.name_en) %>" class="badge badge-matched">موجود (<%= d.stock_units %> <%= d.form.label || 'حبة' %>)</a>
+                    <% } else { %>
+                      <span style="color:var(--text-muted)">—</span>
+                    <% } %>
+                  </td>
+                  <% if (canAdd) { %>
+                    <td data-label="إضافة للمخزون">
+                      <% if (!d.inv_id) { %>
+                        <form method="POST" action="/drug-lookup/add" style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
+                          <input type="hidden" name="ref_id" value="<%= d.id %>">
+                          <% if (!d.form.countable) { %>
+                            <span style="font-size:12px; color:var(--text-muted)"><%= d.form.dosageForm %> (<%= d.form.label || 'وحدة' %>)</span>
+                          <% } else { %>
+                            <input type="number" name="units_per_strip" value="<%= d.form.unitsPerStrip %>" min="1" style="width:56px;" title="عدد الحبات في الشريط">
+                            <span style="font-size:11px; color:var(--text-muted)">حبة ×</span>
+                            <input type="number" name="strips_per_box" value="<%= d.form.stripsPerBox %>" min="1" style="width:56px;" title="عدد الشرائط في العلبة">
+                            <span style="font-size:11px; color:var(--text-muted)">شريط</span>
+                          <% } %>
+                          <input type="text" name="barcode" value="<%= d.barcode || '' %>" placeholder="باركود (اختياري)" style="width:130px; direction:ltr;" title="امسح باركود العلبة الأصلي لو عندك">
+                          <button type="submit" class="btn btn-sm">إضافة</button>
+                        </form>
+                      <% } %>
+                    </td>
+                  <% } %>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>
