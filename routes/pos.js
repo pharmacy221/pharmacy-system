@@ -5,6 +5,7 @@ const express = require('express');
 const { query, queryOne, getClient } = require('../db');
 const { requireLogin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
+const { saleLevels } = require('../lib/drug-form');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -22,19 +23,57 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// البحث عن صنف بالاسم أو الباركود أو الاسم العلمي (نتيجة فورية لشاشة الكاشير)
+// يضيف لكل صنف وحدات البيع المسموحة (حبة/شريط/علبة أو حقنة/شراب/بخاخة...) + اسم الشكل
+function withLevels(m) {
+  const info = saleLevels(m);
+  return { ...m, levels: info.levels, default_level: info.defaultLevel, form_label: info.formLabel, single: info.single };
+}
+
+const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => '\\' + c);
+
+// البحث الفوري (اسم تجاري / مادة فعالة / باركود). كل كلمة لازم تتلاقي في الاسم أو المادة الفعالة.
+// ?instock=1 يعرض المتاح بس. المتاح بيظهر الأول دايمًا.
 router.get('/search', async (req, res, next) => {
   try {
     const q = (req.query.q || '').trim();
     if (!q) return res.json({ results: [] });
+    const instock = req.query.instock === '1';
 
-    const results = await query(
+    const terms = q.split(/\s+/).filter(Boolean).slice(0, 5);
+    const params = [q];
+    const conds = terms.map((t) => {
+      params.push(`%${escapeLike(t)}%`);
+      return `(name ILIKE $${params.length} OR generic_name ILIKE $${params.length})`;
+    });
+    params.push(`${escapeLike(q)}%`);
+    const prefix = `$${params.length}`;
+
+    const rows = await query(
       `SELECT * FROM medicines
-       WHERE is_active = true AND (name ILIKE $1 OR generic_name ILIKE $1 OR barcode = $2)
-       ORDER BY lower(name) LIMIT 10`,
-      [`%${q}%`, q]
+       WHERE is_active = true ${instock ? 'AND stock_units > 0' : ''}
+         AND (barcode = $1 OR (${conds.join(' AND ')}))
+       ORDER BY (barcode = $1) DESC, (stock_units > 0) DESC, (name ILIKE ${prefix}) DESC, lower(name)
+       LIMIT 40`,
+      params
     );
-    res.json({ results });
+    res.json({ results: rows.map(withLevels) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// بدائل صنف: نفس المادة الفعالة والمتاحة في المخزون
+router.get('/alternatives', async (req, res, next) => {
+  try {
+    const m = await queryOne('SELECT id, name, generic_name FROM medicines WHERE id = $1', [parseInt(req.query.id) || 0]);
+    if (!m || !m.generic_name) return res.json({ results: [], base: m ? m.name : null });
+    const rows = await query(
+      `SELECT * FROM medicines
+       WHERE is_active = true AND id <> $1 AND generic_name = $2
+       ORDER BY (stock_units > 0) DESC, sale_price_box ASC NULLS LAST, lower(name) LIMIT 40`,
+      [m.id, m.generic_name]
+    );
+    res.json({ results: rows.map(withLevels), base: m.name });
   } catch (err) {
     next(err);
   }
@@ -49,7 +88,7 @@ router.get('/lookup', async (req, res, next) => {
     const medicine = await queryOne('SELECT * FROM medicines WHERE barcode = $1 AND is_active = true', [barcode]);
     if (!medicine) return res.json({ found: false });
 
-    res.json({ found: true, medicine });
+    res.json({ found: true, medicine: withLevels(medicine) });
   } catch (err) {
     next(err);
   }
@@ -147,8 +186,12 @@ router.post('/checkout', async (req, res, next) => {
       const medicine = medResult.rows[0];
       if (!medicine) throw new Error(`الصنف رقم ${item.medicine_id} غير موجود`);
 
-      const saleUnit = ['unit', 'strip', 'box'].includes(item.sale_unit) ? item.sale_unit : 'unit';
-      const quantity = parseInt(item.quantity) || 1;
+      // الوحدة لازم تكون من وحدات الصنف (مثلاً الشراب/الحقنة ملهمش شريط)
+      const lv = saleLevels(medicine);
+      const chosen = lv.levels.find((l) => l.key === item.sale_unit) || lv.levels.find((l) => l.key === lv.defaultLevel) || lv.levels[0];
+      const saleUnit = chosen.key;
+      const unitLabel = chosen.label;
+      const quantity = Math.max(parseInt(item.quantity) || 1, 1);
 
       let unitPrice;
       if (saleUnit === 'unit') unitPrice = Number(medicine.sale_price_unit);
@@ -162,12 +205,12 @@ router.post('/checkout', async (req, res, next) => {
 
       // الـ triggers هتتولى: تحويل الكمية للحبة، خصم المخزون بنظام FEFO، حساب متوسط التكلفة، ورفض البيع لو المخزون غير كافي
       await client.query(
-        `INSERT INTO sale_items (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, unit_price, total)
-         VALUES ($1, $2, $3, $4, $5, 0, $6, $7)`,
-        [invoiceId, medicine.id, medicine.name, saleUnit, quantity, unitPrice, lineTotal]
+        `INSERT INTO sale_items (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, unit_price, total, unit_label)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)`,
+        [invoiceId, medicine.id, medicine.name, saleUnit, quantity, unitPrice, lineTotal, unitLabel]
       );
 
-      soldSummary.push({ name: medicine.name, sale_unit: saleUnit, quantity });
+      soldSummary.push({ name: medicine.name, sale_unit: saleUnit, quantity, unit_label: unitLabel });
     }
 
     // حساب الخصم النهائي (يدوي + كوبون) وتحديثه على الفاتورة (الـ trigger بيعيد حساب total = مجموع البنود - discount)

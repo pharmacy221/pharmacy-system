@@ -56,8 +56,8 @@ router.post('/add', async (req, res, next) => {
     const refundAmount = Math.round((Number(saleItem.unit_price) * qty) * 100) / 100;
 
     await query(
-      `INSERT INTO returns (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, refund_amount, reason, restocked, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      `INSERT INTO returns (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, refund_amount, reason, restocked, created_by, unit_label)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         invoice_id || saleItem.invoice_id,
         saleItem.medicine_id,
@@ -68,7 +68,8 @@ router.post('/add', async (req, res, next) => {
         refundAmount,
         reason || null,
         restock === 'on',
-        req.session.userId
+        req.session.userId,
+        saleItem.unit_label || null
       ]
     );
 

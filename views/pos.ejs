@@ -4,87 +4,78 @@
   <title>الكاشير - <%= shopName %></title>
   <%- include('partials/head') %>
   <style>
-    .pos-layout {
-      display: grid;
-      grid-template-columns: 1fr 380px;
-      gap: 20px;
-      align-items: start;
+    .pos { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+    .pos-side { position: sticky; top: 76px; }
+    .pos .card { margin-bottom: 14px; padding: 16px; }
+
+    /* ---- شريط البحث ---- */
+    .searchbar { display: flex; gap: 8px; align-items: stretch; }
+    .searchbar input#q {
+      flex: 1; font-size: 18px; padding: 12px 16px; border-radius: 10px;
+      background: var(--bg); border: 2px solid var(--accent); color: var(--text);
     }
-
-    .cart-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
+    .searchbar input#q:focus { outline: none; box-shadow: 0 0 0 3px rgba(0,217,163,.2); }
+    .btn-icon {
+      width: 52px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2);
+      color: var(--accent); cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
+    .searchmeta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+    .searchmeta label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    .searchmeta kbd { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--accent); font-family: var(--mono); }
+    #status { font-weight: 700; min-height: 18px; }
+    #status.ok { color: var(--accent); } #status.err { color: var(--danger); }
 
-    .cart-table th {
-      background: rgba(0, 217, 163, 0.15);
-      padding: 10px 8px;
-      font-size: 13px;
-      color: var(--accent);
-      border-bottom: 2px solid rgba(0, 217, 163, 0.3);
-      text-align: right;
+    /* ---- نتائج البحث ---- */
+    .results-wrap { max-height: 330px; overflow: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; display: none; }
+    .results-head { display: none; justify-content: space-between; align-items: center; margin-top: 12px; padding: 8px 12px; background: var(--amber-dim); color: var(--amber); border-radius: 8px; font-size: 13px; }
+    table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.t th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-muted); font-size: 12px; padding: 8px 10px; text-align: right; z-index: 1; }
+    table.t td { padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: middle; }
+    table.t tr.res { cursor: pointer; }
+    table.t tr.res:hover, table.t tr.res.sel { background: rgba(0,217,163,.08); }
+    table.t tr.res.out { opacity: .55; }
+    .pname { font-weight: 700; }
+    .psub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); margin-inline-start: 6px; }
+    .tag.form { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+    .tag.rx { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-dim); }
+    .stock-ok { color: var(--accent); font-weight: 700; } .stock-low { color: var(--amber); font-weight: 700; } .stock-out { color: var(--danger); font-weight: 700; }
+    .lvl-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .lvl {
+      border: 1px solid var(--accent); background: rgba(0,217,163,.12); color: var(--accent);
+      border-radius: 8px; padding: 4px 10px; cursor: pointer; font-family: var(--sans); font-size: 12px; font-weight: 700; line-height: 1.3;
     }
+    .lvl small { display: block; font-family: var(--mono); font-weight: 500; color: var(--text); font-size: 11px; }
+    .lvl:hover { background: var(--accent); color: #06251d; } .lvl:hover small { color: #06251d; }
+    .lvl:disabled { opacity: .35; cursor: not-allowed; }
+    .link-btn { background: none; border: none; color: var(--amber); cursor: pointer; font-family: var(--sans); font-size: 12px; text-decoration: underline; }
 
-    .cart-table td {
-      padding: 10px 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      vertical-align: middle;
-      font-size: 14px;
-    }
+    /* ---- السلة ---- */
+    .cart-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .cart-title h2 { margin: 0; }
+    .qty { display: inline-flex; align-items: center; gap: 4px; }
+    .qty button { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--accent); background: rgba(0,217,163,.12); color: var(--accent); cursor: pointer; font-size: 16px; font-weight: 700; }
+    .qty input { width: 52px; text-align: center; padding: 5px 2px; font-family: var(--mono); }
+    select.unit-sel { width: auto; padding: 5px 8px; }
+    .warn { color: var(--danger); font-size: 11px; }
+    td.num, th.num { text-align: center; font-family: var(--mono); }
 
-    .cart-item-title { font-weight: 700; color: inherit; }
-    .cart-item-unit {
-      display: inline-block;
-      font-size: 11px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #94a3b8;
-      padding: 2px 6px;
-      border-radius: 4px;
-      margin-top: 4px;
-    }
-    .cart-item-rx { color: var(--amber); font-size: 11px; }
+    /* ---- جنب الفاتورة ---- */
+    .grand { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 12px; padding: 14px; text-align: center; margin-bottom: 12px; }
+    .grand .lbl { font-size: 13px; color: var(--text-muted); }
+    .grand .val { font-family: var(--mono); font-size: 34px; font-weight: 700; color: var(--accent); }
+    .sumrow { display: flex; justify-content: space-between; font-size: 14px; margin: 5px 0; }
+    .sumrow.disc .v { color: var(--danger); }
+    .row2 { display: flex; gap: 8px; } .row2 > * { flex: 1; }
+    .side .field { margin-bottom: 10px; } .side label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+    .coupon-status { font-size: 12px; margin-top: 4px; } .coupon-status.ok { color: var(--accent); } .coupon-status.err { color: var(--danger); }
+    .pay-tabs { display: flex; gap: 6px; }
+    .pay-tabs button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font-family: var(--sans); font-weight: 700; }
+    .pay-tabs button.on { background: var(--accent); color: #06251d; border-color: var(--accent); }
+    .checkout { width: 100%; padding: 14px; font-size: 17px; margin-top: 10px; }
+    .shift-warn { margin-bottom: 14px; }
 
-    .cart-qty-controls { display: flex; align-items: center; gap: 6px; }
-    .cart-qty-controls button {
-      width: 26px; height: 26px;
-      border: 1px solid var(--accent);
-      background: rgba(0, 217, 163, 0.15);
-      color: var(--accent);
-      border-radius: 4px; cursor: pointer; font-weight: bold;
-    }
-
-    .summary-section { margin-top: 15px; border-top: 2px dashed rgba(255,255,255,0.15); padding-top: 12px; }
-    .summary-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:15px; }
-    .summary-row.total-final { margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1); }
-    .summary-row.total-final .label { font-size:18px; font-weight:700; }
-    .summary-row.total-final .value { font-size:22px; font-weight:800; color: var(--accent); }
-    .summary-row.discount-row .value { color: var(--danger); }
-
-    .discount-group { display:flex; gap:8px; }
-    .discount-group input { flex:1; }
-    .discount-group select { width:90px; }
-
-    .coupon-group { display:flex; gap:8px; }
-    .coupon-group input { flex:1; text-transform: uppercase; }
-    .coupon-group button {
-      white-space:nowrap; background: rgba(0,217,163,0.15);
-      border:1px solid var(--accent); color: var(--accent);
-      border-radius:6px; padding:0 14px; cursor:pointer; font-weight:600;
-    }
-    .coupon-status { font-size:12px; margin-top:6px; }
-    .coupon-status.ok { color: var(--accent); }
-    .coupon-status.err { color: var(--danger); }
-
-    .keyboard-shortcuts-hint { display:flex; gap:12px; font-size:12px; color:var(--text-muted); margin-top:8px; flex-wrap: wrap; }
-    .keyboard-shortcuts-hint kbd {
-      background: rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);
-      border-radius:3px; padding:1px 5px; color: var(--accent); font-family: monospace;
-    }
-
-    @media (max-width: 900px) {
-      .pos-layout { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 960px) { .pos { grid-template-columns: 1fr; } .pos-side { position: static; } }
   </style>
 </head>
 <body>
@@ -92,36 +83,38 @@
   <%- include('partials/nav') %>
 
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1>الكاشير</h1>
-        <p>امسح الباركود أو ابحث بالاسم لإضافة الأصناف وتسجيل الفاتورة</p>
-        <div class="keyboard-shortcuts-hint">
-          <span><kbd>F2</kbd> مسح باركود</span>
-          <span><kbd>F4</kbd> بحث بالاسم</span>
-          <span><kbd>Ctrl+Enter</kbd> إتمام البيع</span>
-        </div>
-      </div>
-    </div>
-
     <% if (!activeShift) { %>
-      <div class="alert alert-error">
+      <div class="alert alert-error shift-warn">
         لازم تفتح وردية الأول قبل ما تقدر تبيع. <a href="/shifts" style="color:inherit; text-decoration:underline;">افتح وردية من هنا</a>
       </div>
     <% } %>
 
-    <div class="pos-layout">
-      <!-- البحث والسلة -->
+    <div class="pos">
+      <!-- ================= البحث + السلة ================= -->
       <div>
         <div class="card">
-          <h2>إضافة صنف</h2>
-          <div class="scan-box">
-            <input type="text" id="barcodeInput" placeholder="امسح الباركود هنا... (F2)" autofocus autocomplete="off">
-            <button type="button" class="btn-cam" id="openCameraBtn" title="مسح بالكاميرا">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          <div class="searchbar">
+            <input type="text" id="q" placeholder="ابحث بالاسم التجاري أو المادة الفعالة أو امسح الباركود..." autocomplete="off" autofocus>
+            <button type="button" class="btn-icon" id="openCameraBtn" title="مسح بالكاميرا">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
             </button>
           </div>
-          <div id="scanStatus" class="scan-status"></div>
+          <div class="searchmeta">
+            <label><input type="checkbox" id="instock"> المتاح في المخزون فقط</label>
+            <span><kbd>F2</kbd> بحث</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd> تنقل</span>
+            <span><kbd>Enter</kbd> إضافة</span>
+            <span><kbd>Ctrl+Enter</kbd> إتمام البيع</span>
+            <span id="status"></span>
+          </div>
+
+          <div id="resultsHead" class="results-head"><span id="resultsHeadText"></span><button type="button" class="link-btn" id="backBtn">رجوع للبحث</button></div>
+          <div id="resultsWrap" class="results-wrap">
+            <table class="t">
+              <thead><tr><th>الصنف</th><th>الشركة</th><th>المتاح</th><th>إضافة للفاتورة</th><th></th></tr></thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
 
           <div id="cameraModal" class="camera-modal" style="display:none;">
             <div class="camera-modal-inner">
@@ -133,99 +126,68 @@
               <div id="cameraScanStatus" class="scan-status"></div>
             </div>
           </div>
-
-          <div class="search-results" style="margin-top:12px;">
-            <input type="text" id="searchInput" placeholder="أو ابحث باسم الصنف / الاسم العلمي... (F4)" autocomplete="off">
-            <div id="searchDropdown" class="search-dropdown" style="display:none;"></div>
-          </div>
         </div>
 
-        <div class="card" style="margin-top: 16px;">
-          <h2>سلة الأصناف</h2>
-          <table class="cart-table" id="cartTable">
-            <thead>
-              <tr>
-                <th>الصنف</th>
-                <th>الوحدة</th>
-                <th style="text-align:center;">السعر</th>
-                <th style="text-align:center;">الكمية</th>
-                <th style="text-align:left;">الإجمالي</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="cartBody">
-              <tr id="emptyCartRow"><td colspan="6" style="text-align:center; color:var(--text-muted); padding:20px;">السلة فارغة</td></tr>
-            </tbody>
-          </table>
+        <div class="card">
+          <div class="cart-title">
+            <h2>الفاتورة <span id="cartCount" style="color:var(--text-muted); font-size:13px;"></span></h2>
+            <button type="button" class="link-btn" id="clearCartBtn">تفريغ الفاتورة</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="t">
+              <thead>
+                <tr><th>الصنف</th><th>الوحدة</th><th class="num">السعر</th><th class="num">الكمية</th><th class="num">الإجمالي</th><th></th></tr>
+              </thead>
+              <tbody id="cartBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      <!-- ملخص الفاتورة والدفع -->
-      <div class="card">
-        <h2>إتمام البيع</h2>
+      <!-- ================= الدفع ================= -->
+      <div class="pos-side side">
+        <div class="card">
+          <div class="grand"><div class="lbl">الإجمالي المطلوب</div><div class="val" id="cartTotal">0.00</div></div>
+          <div class="sumrow"><span>المجموع الفرعي</span><span class="mono" id="cartSubtotal">0.00</span></div>
+          <div class="sumrow disc"><span>الخصم</span><span class="mono v" id="cartDiscount">0.00</span></div>
 
-        <div class="field">
-          <label>اسم العميل (اختياري)</label>
-          <input type="text" id="customerName" placeholder="اسم العميل">
-        </div>
-        <div class="field">
-          <label>تليفون العميل (اختياري)</label>
-          <input type="text" id="customerPhone" placeholder="01xxxxxxxxx">
-        </div>
+          <hr style="border:0; border-top:1px dashed var(--border); margin:12px 0;">
 
-        <div class="field">
-          <label>طريقة الدفع</label>
-          <select id="paymentMethod">
-            <option value="cash">كاش</option>
-            <option value="card">بطاقة</option>
-            <option value="other">أخرى</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>الخصم اليدوي</label>
-          <div class="discount-group">
-            <input type="number" id="discountValue" value="0" min="0" step="0.01">
-            <select id="discountType">
-              <option value="amount">ج.م</option>
-              <option value="percent">%</option>
-            </select>
+          <div class="field">
+            <label>طريقة الدفع</label>
+            <div class="pay-tabs" id="payTabs">
+              <button type="button" data-v="cash" class="on">كاش</button>
+              <button type="button" data-v="card">بطاقة</button>
+              <button type="button" data-v="other">أخرى</button>
+            </div>
           </div>
-        </div>
 
-        <div class="field">
-          <label>كود الكوبون (اختياري)</label>
-          <div class="coupon-group">
-            <input type="text" id="couponInput" placeholder="مثال: SAVE10">
-            <button type="button" id="applyCouponBtn">تطبيق</button>
+          <div class="field">
+            <label>خصم يدوي</label>
+            <div class="row2">
+              <input type="number" id="discountValue" value="0" min="0" step="0.01">
+              <select id="discountType" style="max-width:90px;"><option value="amount">ج.م</option><option value="percent">%</option></select>
+            </div>
           </div>
-          <div id="couponStatus" class="coupon-status"></div>
-        </div>
 
-        <div class="field">
-          <label>ملاحظات (اختياري)</label>
-          <textarea id="notes" rows="2"></textarea>
-        </div>
+          <div class="field">
+            <label>كوبون</label>
+            <div class="row2">
+              <input type="text" id="couponInput" placeholder="SAVE10" style="text-transform:uppercase;">
+              <button type="button" class="btn-ghost-sm" id="applyCouponBtn" style="max-width:80px;">تطبيق</button>
+            </div>
+            <div id="couponStatus" class="coupon-status"></div>
+          </div>
 
-        <div class="summary-section">
-          <div class="summary-row">
-            <span class="label">المجموع الفرعي</span>
-            <span class="value mono" id="cartSubtotal">0.00 ج.م</span>
+          <div class="row2">
+            <div class="field"><label>اسم العميل</label><input type="text" id="customerName" placeholder="اختياري"></div>
+            <div class="field"><label>التليفون</label><input type="text" id="customerPhone" placeholder="01xxxxxxxxx"></div>
           </div>
-          <div class="summary-row discount-row">
-            <span class="label">إجمالي الخصم</span>
-            <span class="value mono" id="cartDiscount">0.00 ج.م</span>
-          </div>
-          <div class="summary-row total-final">
-            <span class="label">الإجمالي النهائي</span>
-            <span class="value mono" id="cartTotal">0.00 ج.م</span>
-          </div>
-        </div>
+          <div class="field"><label>ملاحظات</label><textarea id="notes" rows="2"></textarea></div>
 
-        <div id="checkoutError" class="alert alert-error" style="display:none; margin-top:10px;"></div>
-        <button type="button" id="checkoutBtn" class="btn" style="width:100%; margin-top:10px;" <%= !activeShift ? 'disabled' : '' %>>
-          تسجيل البيع وطباعة الفاتورة (Ctrl+Enter)
-        </button>
+          <div id="checkoutError" class="alert alert-error" style="display:none; margin-top:6px;"></div>
+          <button type="button" id="checkoutBtn" class="btn checkout" <%= !activeShift ? 'disabled' : '' %>>تسجيل البيع وطباعة الفاتورة</button>
+        </div>
       </div>
     </div>
   </div>
@@ -233,365 +195,325 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
     const hasActiveShift = <%= activeShift ? 'true' : 'false' %>;
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const money = (n) => Number(n || 0).toFixed(2);
 
+    let cart = [];            // { m, sale_unit, quantity }
+    let appliedCoupon = null;
+    let results = [];
+    let selIdx = -1;
+    let payMethod = 'cash';
+    let statusTimer;
+
+    function showStatus(msg, type) {
+      const el = $('status'); el.textContent = msg; el.className = type || '';
+      clearTimeout(statusTimer); statusTimer = setTimeout(() => { el.textContent = ''; }, 2500);
+    }
     function playBeep() {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'square';
-        osc.frequency.value = 1200;
-        gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.15);
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'square'; osc.frequency.value = 1200;
+        gain.gain.setValueAtTime(0.2, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.15);
         osc.onended = () => ctx.close();
-      } catch (err) { }
+      } catch (e) {}
     }
 
-    let cart = [];
-    let appliedCoupon = null;
+    // ---------- أسعار ووحدات ----------
+    function levelPrice(m, key) {
+      const ups = m.units_per_strip || 1, spb = m.strips_per_box || 1;
+      if (key === 'unit') return Number(m.sale_price_unit);
+      if (key === 'strip') return Number(m.sale_price_strip || m.sale_price_unit * ups);
+      return Number(m.sale_price_box || m.sale_price_unit * ups * spb);
+    }
+    function levelQty(m, key) { const l = m.levels.find((x) => x.key === key); return l ? l.qty : 1; }
+    function levelLabel(m, key) { const l = m.levels.find((x) => x.key === key); return l ? l.label : key; }
 
-    const barcodeInput = document.getElementById('barcodeInput');
-    const scanStatus = document.getElementById('scanStatus');
-    const searchInput = document.getElementById('searchInput');
-    const searchDropdown = document.getElementById('searchDropdown');
-    const cartBody = document.getElementById('cartBody');
-    const emptyCartRow = document.getElementById('emptyCartRow');
-    const cartSubtotal = document.getElementById('cartSubtotal');
-    const cartDiscount = document.getElementById('cartDiscount');
-    const cartTotal = document.getElementById('cartTotal');
-    const discountValueInput = document.getElementById('discountValue');
-    const discountTypeSelect = document.getElementById('discountType');
-    const couponInput = document.getElementById('couponInput');
-    const applyCouponBtn = document.getElementById('applyCouponBtn');
-    const couponStatus = document.getElementById('couponStatus');
-    const checkoutBtn = document.getElementById('checkoutBtn');
-    const checkoutError = document.getElementById('checkoutError');
-
-    function showStatus(msg, type) {
-      scanStatus.textContent = msg;
-      scanStatus.className = 'scan-status ' + (type || '');
-      setTimeout(() => { scanStatus.textContent = ''; }, 2500);
+    // "3 علبة + 4 شريط + 2 حبة" / "12 حقنة"
+    function stockText(m) {
+      let left = Number(m.stock_units) || 0;
+      if (left <= 0) return 'نفذ';
+      const parts = [];
+      [...m.levels].sort((a, b) => b.qty - a.qty).forEach((l) => {
+        const n = Math.floor(left / l.qty);
+        if (n > 0) { parts.push(n + ' ' + l.label); left -= n * l.qty; }
+      });
+      return parts.join(' + ');
+    }
+    function stockClass(m) {
+      const s = Number(m.stock_units) || 0;
+      return s <= 0 ? 'stock-out' : (s <= (m.min_stock_units || 0) ? 'stock-low' : 'stock-ok');
     }
 
-    function unitPriceFor(medicine, saleUnit) {
-      if (saleUnit === 'unit') return Number(medicine.sale_price_unit);
-      if (saleUnit === 'strip') return Number(medicine.sale_price_strip || medicine.sale_price_unit * medicine.units_per_strip);
-      return Number(medicine.sale_price_box || medicine.sale_price_unit * medicine.units_per_strip * medicine.strips_per_box);
+    // ---------- البحث ----------
+    let debounce, reqId = 0, altMode = false, shownQuery = '';
+    $('q').addEventListener('input', () => {
+      clearTimeout(debounce);
+      const q = $('q').value.trim();
+      if (!q) { hideResults(); return; }
+      debounce = setTimeout(() => runSearch(q), 220);
+    });
+    $('instock').addEventListener('change', () => { const q = $('q').value.trim(); if (q) runSearch(q); });
+
+    async function runSearch(q) {
+      const my = ++reqId;
+      try {
+        const res = await fetch('/pos/search?q=' + encodeURIComponent(q) + ($('instock').checked ? '&instock=1' : ''));
+        const data = await res.json();
+        if (my !== reqId) return;
+        altMode = false; shownQuery = q;
+        showResults(data.results, null);
+      } catch (e) { showStatus('حدث خطأ في الاتصال بالسيرفر', 'err'); }
     }
 
-    function addToCart(medicine, saleUnit) {
-      saleUnit = saleUnit || 'unit';
-      const existing = cart.find(i => i.medicine_id === medicine.id && i.sale_unit === saleUnit);
-      if (existing) {
-        existing.quantity += 1;
-      } else {
-        cart.push({
-          medicine_id: medicine.id,
-          name: medicine.name,
-          sale_unit: saleUnit,
-          quantity: 1,
-          units_per_strip: medicine.units_per_strip,
-          strips_per_box: medicine.strips_per_box,
-          sale_price_unit: medicine.sale_price_unit,
-          sale_price_strip: medicine.sale_price_strip,
-          sale_price_box: medicine.sale_price_box,
-          requires_prescription: medicine.requires_prescription
-        });
+    async function showAlternatives(id) {
+      try {
+        const res = await fetch('/pos/alternatives?id=' + id);
+        const data = await res.json();
+        altMode = true;
+        showResults(data.results, 'بدائل ' + (data.base || '') + ' (نفس المادة الفعالة)');
+      } catch (e) { showStatus('تعذر تحميل البدائل', 'err'); }
+    }
+    $('backBtn').addEventListener('click', () => { altMode = false; const q = $('q').value.trim(); q ? runSearch(q) : hideResults(); $('q').focus(); });
+
+    function hideResults() { results = []; selIdx = -1; $('resultsWrap').style.display = 'none'; $('resultsHead').style.display = 'none'; }
+
+    function showResults(list, headText) {
+      results = list; selIdx = list.length ? 0 : -1;
+      $('resultsHead').style.display = headText ? 'flex' : 'none';
+      $('resultsHeadText').textContent = headText || '';
+      $('resultsWrap').style.display = 'block';
+      renderResults();
+    }
+
+    function renderResults() {
+      if (!results.length) {
+        $('resultsBody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:18px;">لا توجد نتائج</td></tr>';
+        return;
       }
+      $('resultsBody').innerHTML = results.map((m, i) => {
+        const out = Number(m.stock_units) <= 0;
+        const btns = m.levels.map((l) =>
+          `<button type="button" class="lvl" data-add="${i}" data-unit="${l.key}" ${out ? 'disabled' : ''}>${esc(l.label)}<small>${money(levelPrice(m, l.key))}</small></button>`
+        ).join('');
+        return `
+          <tr class="res ${i === selIdx ? 'sel' : ''} ${out ? 'out' : ''}" data-row="${i}">
+            <td>
+              <div class="pname">${esc(m.name)}
+                ${m.form_label ? `<span class="tag form">${esc(m.form_label)}</span>` : ''}
+                ${m.requires_prescription ? '<span class="tag rx">روشتة</span>' : ''}
+              </div>
+              ${m.generic_name ? `<div class="psub">${esc(m.generic_name)}</div>` : ''}
+            </td>
+            <td style="font-size:12px; color:var(--text-muted);">${esc(m.manufacturer || '')}</td>
+            <td class="${stockClass(m)}" style="font-size:13px;">${esc(stockText(m))}</td>
+            <td><div class="lvl-btns">${btns}</div></td>
+            <td>${m.generic_name && !altMode ? `<button type="button" class="link-btn" data-alt="${m.id}">بدائل</button>` : ''}</td>
+          </tr>`;
+      }).join('');
+      const sel = $('resultsBody').querySelector('tr.sel');
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
+    }
+
+    $('resultsBody').addEventListener('click', (e) => {
+      const alt = e.target.closest('[data-alt]');
+      if (alt) { showAlternatives(alt.dataset.alt); return; }
+      const add = e.target.closest('[data-add]');
+      if (add) { addToCart(results[+add.dataset.add], add.dataset.unit); return; }
+      const row = e.target.closest('tr[data-row]');
+      if (row) { selIdx = +row.dataset.row; renderResults(); }
+    });
+
+    // ---------- السلة ----------
+    function addToCart(m, unit) {
+      if (!m) return;
+      if (Number(m.stock_units) <= 0) { showStatus('الصنف نفذ من المخزون: ' + m.name, 'err'); return; }
+      unit = unit || m.default_level;
+      const ex = cart.find((i) => i.m.id === m.id && i.sale_unit === unit);
+      if (ex) ex.quantity += 1; else cart.push({ m, sale_unit: unit, quantity: 1 });
+      showStatus('تمت إضافة: ' + m.name, 'ok');
       renderCart();
     }
 
-    function renderCart() {
-      if (cart.length === 0) {
-        cartBody.innerHTML = '';
-        cartBody.appendChild(emptyCartRow);
-        updateSummary();
-        return;
-      }
+    function lineUnits(i) { return i.quantity * levelQty(i.m, i.sale_unit); }
+    function totalUnitsFor(id) { return cart.filter((i) => i.m.id === id).reduce((s, i) => s + lineUnits(i), 0); }
 
-      cartBody.innerHTML = cart.map((item, idx) => {
-        const fakeMed = { sale_price_unit: item.sale_price_unit, sale_price_strip: item.sale_price_strip, sale_price_box: item.sale_price_box, units_per_strip: item.units_per_strip, strips_per_box: item.strips_per_box };
-        const price = unitPriceFor(fakeMed, item.sale_unit);
-        const lineTotal = price * item.quantity;
+    function renderCart() {
+      $('cartCount').textContent = cart.length ? `(${cart.length} صنف)` : '';
+      if (!cart.length) {
+        $('cartBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:22px;">الفاتورة فارغة — ابحث عن صنف أو امسح الباركود</td></tr>';
+        updateSummary(); return;
+      }
+      $('cartBody').innerHTML = cart.map((i, idx) => {
+        const price = levelPrice(i.m, i.sale_unit);
+        const over = totalUnitsFor(i.m.id) > Number(i.m.stock_units);
+        const unitCell = i.m.levels.length > 1
+          ? `<select class="unit-sel" data-unit-idx="${idx}">${i.m.levels.map((l) => `<option value="${l.key}" ${l.key === i.sale_unit ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>`
+          : `<span class="tag form" style="margin:0;">${esc(i.m.levels[0].label)}</span>`;
         return `
           <tr>
-            <td>
-              <div class="cart-item-title">${item.name}</div>
-              ${item.requires_prescription ? '<div class="cart-item-rx">تحتاج روشتة</div>' : ''}
-            </td>
-            <td>
-              <select onchange="changeUnit(${idx}, this.value)" style="width:auto; padding:4px;">
-                <option value="unit" ${item.sale_unit === 'unit' ? 'selected' : ''}>حبة</option>
-                <option value="strip" ${item.sale_unit === 'strip' ? 'selected' : ''}>شريط</option>
-                <option value="box" ${item.sale_unit === 'box' ? 'selected' : ''}>علبة</option>
-              </select>
-            </td>
-            <td class="mono" style="text-align:center;">${price.toFixed(2)}</td>
-            <td style="text-align:center;">
-              <div class="cart-qty-controls">
-                <button type="button" onclick="changeQty(${idx}, 1)">+</button>
-                <span class="mono">${item.quantity}</span>
-                <button type="button" onclick="changeQty(${idx}, -1)">-</button>
-              </div>
-            </td>
-            <td class="mono" style="text-align:left;">${lineTotal.toFixed(2)}</td>
-            <td><button type="button" class="btn-ghost-sm" onclick="removeItem(${idx})">حذف</button></td>
-          </tr>
-        `;
+            <td><div class="pname">${esc(i.m.name)}</div>
+              ${i.m.requires_prescription ? '<div class="psub" style="color:var(--amber)">تحتاج روشتة</div>' : ''}
+              ${over ? `<div class="warn">المتاح في المخزون: ${esc(stockText(i.m))}</div>` : ''}</td>
+            <td>${unitCell}</td>
+            <td class="num">${money(price)}</td>
+            <td class="num"><div class="qty">
+              <button type="button" data-q="${idx}" data-d="1">+</button>
+              <input type="number" min="1" value="${i.quantity}" data-qin="${idx}">
+              <button type="button" data-q="${idx}" data-d="-1">−</button></div></td>
+            <td class="num">${money(price * i.quantity)}</td>
+            <td><button type="button" class="btn-ghost-sm" data-del="${idx}">حذف</button></td>
+          </tr>`;
       }).join('');
-
       updateSummary();
     }
 
-    function changeUnit(idx, unit) {
-      cart[idx].sale_unit = unit;
-      renderCart();
-    }
-
-    function changeQty(idx, delta) {
-      const item = cart[idx];
-      const newQty = item.quantity + delta;
-      if (newQty < 1) { removeItem(idx); return; }
-      item.quantity = newQty;
-      renderCart();
-    }
-
-    function removeItem(idx) {
-      cart.splice(idx, 1);
-      renderCart();
-    }
-
-    function updateSummary() {
-      let subtotal = 0;
-      cart.forEach(item => {
-        const fakeMed = { sale_price_unit: item.sale_price_unit, sale_price_strip: item.sale_price_strip, sale_price_box: item.sale_price_box, units_per_strip: item.units_per_strip, strips_per_box: item.strips_per_box };
-        subtotal += unitPriceFor(fakeMed, item.sale_unit) * item.quantity;
-      });
-
-      let discountVal = parseFloat(discountValueInput.value) || 0;
-      let manualDiscount = discountTypeSelect.value === 'percent' ? (subtotal * discountVal) / 100 : discountVal;
-
-      let couponDiscount = 0;
-      if (appliedCoupon) {
-        couponDiscount = Number(appliedCoupon.discount_amount) || 0;
+    $('cartBody').addEventListener('click', (e) => {
+      const q = e.target.closest('[data-q]');
+      if (q) { const i = cart[+q.dataset.q]; i.quantity += +q.dataset.d; if (i.quantity < 1) cart.splice(+q.dataset.q, 1); renderCart(); return; }
+      const d = e.target.closest('[data-del]');
+      if (d) { cart.splice(+d.dataset.del, 1); renderCart(); }
+    });
+    $('cartBody').addEventListener('change', (e) => {
+      if (e.target.dataset.unitIdx !== undefined) { cart[+e.target.dataset.unitIdx].sale_unit = e.target.value; renderCart(); }
+      if (e.target.dataset.qin !== undefined) {
+        const n = parseInt(e.target.value) || 1; cart[+e.target.dataset.qin].quantity = Math.max(n, 1); renderCart();
       }
+    });
+    $('clearCartBtn').addEventListener('click', () => { if (cart.length && confirm('تفريغ الفاتورة؟')) { cart = []; appliedCoupon = null; $('couponStatus').textContent = ''; renderCart(); } });
 
-      const totalDiscount = Math.min(manualDiscount + couponDiscount, subtotal);
-      const grandTotal = Math.max(0, subtotal - totalDiscount);
-
-      cartSubtotal.textContent = subtotal.toFixed(2) + ' ج.م';
-      cartDiscount.textContent = totalDiscount.toFixed(2) + ' ج.م';
-      cartTotal.textContent = grandTotal.toFixed(2) + ' ج.م';
-      cartTotal.dataset.rawTotal = grandTotal;
-      cartSubtotal.dataset.rawSubtotal = subtotal;
+    function subtotal() { return cart.reduce((s, i) => s + levelPrice(i.m, i.sale_unit) * i.quantity, 0); }
+    function manualDiscount(sub) {
+      const v = parseFloat($('discountValue').value) || 0;
+      return $('discountType').value === 'percent' ? (sub * v) / 100 : v;
     }
+    function updateSummary() {
+      const sub = subtotal();
+      const disc = Math.min(manualDiscount(sub) + (appliedCoupon ? Number(appliedCoupon.discount_amount) || 0 : 0), sub);
+      $('cartSubtotal').textContent = money(sub);
+      $('cartDiscount').textContent = money(disc);
+      $('cartTotal').textContent = money(Math.max(0, sub - disc));
+    }
+    $('discountValue').addEventListener('input', updateSummary);
+    $('discountType').addEventListener('change', updateSummary);
+    $('payTabs').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      payMethod = b.dataset.v;
+      $('payTabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    });
 
-    discountValueInput.addEventListener('input', updateSummary);
-    discountTypeSelect.addEventListener('change', updateSummary);
-
-    async function lookupAndAdd(code, statusFn) {
-      const report = statusFn || showStatus;
-      if (!code) return;
+    // ---------- باركود ----------
+    async function lookupAndAdd(code, report) {
+      report = report || showStatus;
       try {
         const res = await fetch('/pos/lookup?barcode=' + encodeURIComponent(code));
         const data = await res.json();
-        if (data.found) {
-          addToCart(data.medicine, 'unit');
-          report('تمت إضافة: ' + data.medicine.name, 'ok');
-        } else {
-          report('لم يتم العثور على الصنف: ' + code, 'err');
-        }
-      } catch (err) {
-        report('حدث خطأ في الاتصال بالسيرفر', 'err');
-      }
+        if (data.found) { addToCart(data.medicine, data.medicine.default_level); return true; }
+        report('لم يتم العثور على الصنف: ' + code, 'err');
+      } catch (e) { report('حدث خطأ في الاتصال بالسيرفر', 'err'); }
+      return false;
     }
 
-    barcodeInput.addEventListener('keydown', async (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const code = barcodeInput.value.trim();
-      barcodeInput.value = '';
-      await lookupAndAdd(code);
-      barcodeInput.focus();
+    $('q').addEventListener('keydown', async (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (results.length) { selIdx = Math.min(selIdx + 1, results.length - 1); renderResults(); } }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (results.length) { selIdx = Math.max(selIdx - 1, 0); renderResults(); } }
+      else if (e.key === 'Escape') { $('q').value = ''; hideResults(); }
+      else if (e.key === 'Enter' && !e.ctrlKey) {
+        e.preventDefault();
+        const code = $('q').value.trim();
+        if (!code) return;
+        // باركود (أرقام فقط): بحث مباشر
+        if (/^\d{6,}$/.test(code)) {
+          const ok = await lookupAndAdd(code);
+          if (ok) { $('q').value = ''; hideResults(); }
+          return;
+        }
+        clearTimeout(debounce);
+        if (code === shownQuery && results.length && selIdx >= 0) {
+          addToCart(results[selIdx]);
+          $('q').value = ''; hideResults();
+        } else {
+          await runSearch(code);
+        }
+      }
     });
 
-    const openCameraBtn = document.getElementById('openCameraBtn');
-    const closeCameraBtn = document.getElementById('closeCameraBtn');
-    const cameraModal = document.getElementById('cameraModal');
-    const cameraScanStatus = document.getElementById('cameraScanStatus');
-    let html5QrCode = null;
-    let cameraBusy = false;
-
-    function showCameraStatus(msg, type) {
-      cameraScanStatus.textContent = msg;
-      cameraScanStatus.className = 'scan-status ' + (type || '');
-    }
-
+    // ---------- كاميرا ----------
+    let html5QrCode = null, cameraBusy = false;
+    function showCameraStatus(msg, type) { $('cameraScanStatus').textContent = msg; $('cameraScanStatus').className = 'scan-status ' + (type || ''); }
     async function startCamera() {
-      if (typeof Html5Qrcode === 'undefined') {
-        showStatus('تعذر تحميل مكتبة الكاميرا', 'err');
-        return;
-      }
-      cameraModal.style.display = 'flex';
+      if (typeof Html5Qrcode === 'undefined') { showStatus('تعذر تحميل مكتبة الكاميرا', 'err'); return; }
+      $('cameraModal').style.display = 'flex';
       html5QrCode = new Html5Qrcode('cameraReader');
       try {
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 260, height: 160 } },
-          async (decodedText) => {
-            if (cameraBusy) return;
-            cameraBusy = true;
-            playBeep();
+        await html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 160 } },
+          async (text) => {
+            if (cameraBusy) return; cameraBusy = true; playBeep();
             showCameraStatus('جاري إضافة الصنف...', 'ok');
-            await lookupAndAdd(decodedText.trim(), showStatus);
+            await lookupAndAdd(text.trim(), showStatus);
             await stopCamera();
-          },
-          () => { }
-        );
-      } catch (err) {
-        showCameraStatus('تعذر فتح الكاميرا، يرجى السماح بالصلاحيات', 'err');
-      }
+          }, () => {});
+      } catch (err) { showCameraStatus('تعذر فتح الكاميرا، يرجى السماح بالصلاحيات', 'err'); }
     }
-
     async function stopCamera() {
-      cameraModal.style.display = 'none';
-      cameraBusy = false;
+      $('cameraModal').style.display = 'none'; cameraBusy = false;
       if (html5QrCode) {
-        try {
-          const state = html5QrCode.getState ? html5QrCode.getState() : null;
-          if (state === 2) await html5QrCode.stop();
-          html5QrCode.clear();
-        } catch (err) { }
+        try { const st = html5QrCode.getState ? html5QrCode.getState() : null; if (st === 2) await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
         html5QrCode = null;
       }
-      barcodeInput.focus();
+      $('q').focus();
     }
+    $('openCameraBtn').addEventListener('click', startCamera);
+    $('closeCameraBtn').addEventListener('click', stopCamera);
 
-    openCameraBtn.addEventListener('click', startCamera);
-    closeCameraBtn.addEventListener('click', stopCamera);
-
-    let searchDebounce;
-    searchInput.addEventListener('input', () => {
-      clearTimeout(searchDebounce);
-      const q = searchInput.value.trim();
-      if (!q) { searchDropdown.style.display = 'none'; return; }
-      searchDebounce = setTimeout(async () => {
-        const res = await fetch('/pos/search?q=' + encodeURIComponent(q));
-        const data = await res.json();
-        if (data.results.length === 0) {
-          searchDropdown.innerHTML = '<div class="item" style="color:var(--text-muted)">لا توجد نتائج</div>';
-        } else {
-          searchDropdown.innerHTML = data.results.map(m => `
-            <div class="item" data-id="${m.id}">
-              <span>${m.name} ${m.generic_name ? `<small style="color:var(--text-muted)">(${m.generic_name})</small>` : ''}</span>
-              <span class="mono" style="color:var(--text-muted)">${Number(m.sale_price_unit).toFixed(2)} · متاح ${m.stock_units}</span>
-            </div>
-          `).join('');
-        }
-        searchDropdown.style.display = 'block';
-        searchDropdown.querySelectorAll('.item[data-id]').forEach(el => {
-          el.addEventListener('click', () => {
-            const medicine = data.results.find(m => m.id == el.dataset.id);
-            if (medicine) {
-              addToCart(medicine, 'unit');
-              showStatus('تمت إضافة: ' + medicine.name, 'ok');
-            }
-            searchInput.value = '';
-            searchDropdown.style.display = 'none';
-          });
-        });
-      }, 250);
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
-        searchDropdown.style.display = 'none';
-      }
-    });
-
-    applyCouponBtn.addEventListener('click', async () => {
-      const code = couponInput.value.trim();
-      if (!code) return;
-      const subtotal = parseFloat(cartSubtotal.dataset.rawSubtotal) || 0;
+    // ---------- كوبون ----------
+    $('applyCouponBtn').addEventListener('click', async () => {
+      const code = $('couponInput').value.trim(); if (!code) return;
       try {
-        const res = await fetch('/pos/coupon-check?code=' + encodeURIComponent(code) + '&subtotal=' + subtotal);
+        const res = await fetch('/pos/coupon-check?code=' + encodeURIComponent(code) + '&subtotal=' + subtotal());
         const data = await res.json();
         if (data.valid) {
           appliedCoupon = { code: data.coupon.code, discount_amount: data.discount_amount };
-          couponStatus.textContent = 'تم تطبيق الكوبون: خصم ' + Number(data.discount_amount).toFixed(2) + ' ج.م';
-          couponStatus.className = 'coupon-status ok';
+          $('couponStatus').textContent = 'تم تطبيق الكوبون: خصم ' + money(data.discount_amount) + ' ج.م'; $('couponStatus').className = 'coupon-status ok';
         } else {
-          appliedCoupon = null;
-          couponStatus.textContent = data.message || 'كوبون غير صالح';
-          couponStatus.className = 'coupon-status err';
+          appliedCoupon = null; $('couponStatus').textContent = data.message || 'كوبون غير صالح'; $('couponStatus').className = 'coupon-status err';
         }
         updateSummary();
-      } catch (err) {
-        couponStatus.textContent = 'حصل خطأ أثناء التحقق من الكوبون';
-        couponStatus.className = 'coupon-status err';
-      }
+      } catch (e) { $('couponStatus').textContent = 'حصل خطأ أثناء التحقق من الكوبون'; $('couponStatus').className = 'coupon-status err'; }
     });
 
+    // ---------- إتمام البيع ----------
+    const CHECKOUT_LABEL = 'تسجيل البيع وطباعة الفاتورة';
+    function fail(msg) { $('checkoutError').textContent = msg; $('checkoutError').style.display = 'block'; $('checkoutBtn').disabled = !hasActiveShift; $('checkoutBtn').textContent = CHECKOUT_LABEL; }
     async function doCheckout() {
-      checkoutError.style.display = 'none';
-      if (!hasActiveShift) {
-        checkoutError.textContent = 'لازم تفتح وردية أولاً قبل إجراء عملية البيع';
-        checkoutError.style.display = 'block';
-        return;
-      }
-      if (cart.length === 0) {
-        checkoutError.textContent = 'السلة فارغة، أضف صنفاً أولاً';
-        checkoutError.style.display = 'block';
-        return;
-      }
-
-      checkoutBtn.disabled = true;
-      checkoutBtn.textContent = 'جاري التسجيل...';
-
+      $('checkoutError').style.display = 'none';
+      if (!hasActiveShift) return fail('لازم تفتح وردية أولاً قبل إجراء عملية البيع');
+      if (!cart.length) return fail('الفاتورة فارغة، أضف صنفاً أولاً');
+      $('checkoutBtn').disabled = true; $('checkoutBtn').textContent = 'جاري التسجيل...';
       try {
         const res = await fetch('/pos/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            items: cart.map(i => ({ medicine_id: i.medicine_id, sale_unit: i.sale_unit, quantity: i.quantity })),
-            customer_name: document.getElementById('customerName').value,
-            customer_phone: document.getElementById('customerPhone').value,
-            payment_method: document.getElementById('paymentMethod').value,
-            discount_amount: discountTypeSelect.value === 'percent'
-              ? ((parseFloat(cartSubtotal.dataset.rawSubtotal) || 0) * (parseFloat(discountValueInput.value) || 0)) / 100
-              : (parseFloat(discountValueInput.value) || 0),
-            coupon_code: appliedCoupon ? appliedCoupon.code : null,
-            notes: document.getElementById('notes').value
+            items: cart.map((i) => ({ medicine_id: i.m.id, sale_unit: i.sale_unit, quantity: i.quantity })),
+            customer_name: $('customerName').value, customer_phone: $('customerPhone').value,
+            payment_method: payMethod, discount_amount: manualDiscount(subtotal()),
+            coupon_code: appliedCoupon ? appliedCoupon.code : null, notes: $('notes').value
           })
         });
         const data = await res.json();
-        if (data.ok) {
-          window.location.href = '/pos/receipt/' + data.invoiceId;
-        } else {
-          checkoutError.textContent = data.error || 'حدث خطأ، يرجى المحاولة لاحقاً';
-          checkoutError.style.display = 'block';
-          checkoutBtn.disabled = false;
-          checkoutBtn.textContent = 'تسجيل البيع وطباعة الفاتورة (Ctrl+Enter)';
-        }
-      } catch (err) {
-        checkoutError.textContent = 'حدث خطأ في الاتصال بالسيرفر';
-        checkoutError.style.display = 'block';
-        checkoutBtn.disabled = false;
-        checkoutBtn.textContent = 'تسجيل البيع وطباعة الفاتورة (Ctrl+Enter)';
-      }
+        if (data.ok) window.location.href = '/pos/receipt/' + data.invoiceId; else fail(data.error || 'حدث خطأ، يرجى المحاولة لاحقاً');
+      } catch (e) { fail('حدث خطأ في الاتصال بالسيرفر'); }
     }
-
-    checkoutBtn.addEventListener('click', doCheckout);
+    $('checkoutBtn').addEventListener('click', doCheckout);
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'F2') { e.preventDefault(); barcodeInput.focus(); }
-      if (e.key === 'F4') { e.preventDefault(); searchInput.focus(); }
-      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); doCheckout(); }
+      if (e.key === 'F2') { e.preventDefault(); $('q').focus(); $('q').select(); }
+      if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) { e.preventDefault(); doCheckout(); }
     });
+
+    renderCart();
   </script>
 </body>
 </html>

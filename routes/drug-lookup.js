@@ -104,10 +104,10 @@ router.post('/add', requireAdmin, async (req, res, next) => {
     const ref = Number.isInteger(refId) ? await queryOne('SELECT * FROM drug_reference WHERE id = $1', [refId]) : null;
     if (!ref) return res.redirect('/drug-lookup?msg=notfound');
 
-    // الشكل بيتحدد من السيرفر مش من الفورم: شراب/زجاجة وعلبة = وحدة واحدة (مفيش حبات ولا شرائط)
+    // الشكل ووحدات البيع بتتحدد من السيرفر حسب اسم الدواء (قرص/كبسول/حقنة/بخاخة/شراب...)
     const form = classifyDrug(ref);
-    const unitsPerStrip = form.single ? 1 : Math.max(parseInt(req.body.units_per_strip) || 1, 1);
-    const stripsPerBox = form.single ? 1 : Math.max(parseInt(req.body.strips_per_box) || 1, 1);
+    const unitsPerStrip = form.countable ? Math.max(parseInt(req.body.units_per_strip) || form.unitsPerStrip, 1) : 1;
+    const stripsPerBox = form.countable ? Math.max(parseInt(req.body.strips_per_box) || form.stripsPerBox, 1) : 1;
     const barcode = (req.body.barcode || ref.barcode || '').trim() || null;
 
     const existing = await queryOne('SELECT id FROM medicines WHERE is_active = true AND lower(name) = lower($1)', [ref.name_en]);
@@ -119,10 +119,10 @@ router.post('/add', requireAdmin, async (req, res, next) => {
 
     try {
       await query(
-        `INSERT INTO medicines (name, generic_name, category, dosage_form, manufacturer, barcode, units_per_strip, strips_per_box,
-                                sale_price_unit, sale_price_strip, sale_price_box, stock_units)
-         VALUES ($1, $2, 'أدوية', $3, $4, $5, $6, $7, $8, $9, $10, 0)`,
-        [ref.name_en, ref.scientific_name, form.dosageForm, ref.manufacturer, barcode, unitsPerStrip, stripsPerBox, perUnit, perStrip, box]
+        `INSERT INTO medicines (name, generic_name, category, dosage_form, form_kind, manufacturer, barcode, units_per_strip, strips_per_box,
+                                sale_price_unit, sale_price_strip, sale_price_box, stock_units, ref_id)
+         VALUES ($1, $2, 'أدوية', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12)`,
+        [ref.name_en, ref.scientific_name, form.dosageForm, form.kind, ref.manufacturer, barcode, unitsPerStrip, stripsPerBox, perUnit, perStrip, box, ref.id]
       );
     } catch (err) {
       if (err.code === '23505') return res.redirect('/drug-lookup?msg=barcode_dup&q=' + encodeURIComponent(ref.name_en)); // الباركود مستخدم لصنف تاني

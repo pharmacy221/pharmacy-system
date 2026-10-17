@@ -4,22 +4,46 @@ const express = require('express');
 const { query, queryOne } = require('../db');
 const { requireLogin, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
+const { FORMS, saleLevels } = require('../lib/drug-form');
 
 const router = express.Router();
 router.use(requireLogin);
 
+const PAGE_SIZE = 60;
+// متغيرات مشتركة لكل صفحات الأصناف (الترقيم + الفلاتر + نوع المنتج + اسم الوحدة)
+router.use((req, res, next) => {
+  res.locals.pg = { page: 1, pages: 1, total: null, form: '', instock: false };
+  res.locals.formKinds = Object.entries(FORMS).map(([key, f]) => ({ key, label: f.label }));
+  res.locals.unitName = (p) => saleLevels(p).levels[0].label;
+  next();
+});
+
 const CATEGORIES = ['أدوية', 'مستحضرات تجميل', 'مكملات غذائية', 'أدوات طبية', 'رضاعة وأطفال', 'أخرى'];
 
-async function getMedicines(q) {
+// بحث + فلتر نوع المنتج + المتاح فقط + ترقيم (الدليل فيه آلاف الأصناف)
+async function getMedicinesPage({ q, form, instock, page }) {
+  const params = [];
+  const where = ['is_active = true'];
   if (q && q.trim()) {
-    const term = `%${q.trim()}%`;
-    return query(
-      `SELECT * FROM medicines WHERE is_active = true AND (name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1 OR conditions_tags ILIKE $1)
-       ORDER BY lower(name)`,
-      [term]
-    );
+    params.push(`%${q.trim().replace(/[\\%_]/g, (c) => '\\' + c)}%`);
+    where.push(`(name ILIKE $1 OR generic_name ILIKE $1 OR barcode ILIKE $1 OR serial_number ILIKE $1 OR conditions_tags ILIKE $1)`);
   }
-  return query('SELECT * FROM medicines WHERE is_active = true ORDER BY lower(name)');
+  if (form && FORMS[form]) { params.push(form); where.push(`form_kind = $${params.length}`); }
+  if (instock) where.push('stock_units > 0');
+  const w = where.join(' AND ');
+  const total = (await queryOne(`SELECT COUNT(*)::int AS c FROM medicines WHERE ${w}`, params)).c;
+  const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+  const p = Math.min(Math.max(parseInt(page) || 1, 1), pages);
+  const rows = await query(
+    `SELECT * FROM medicines WHERE ${w} ORDER BY lower(name) LIMIT ${PAGE_SIZE} OFFSET ${(p - 1) * PAGE_SIZE}`,
+    params
+  );
+  return { rows, total, pages, page: p };
+}
+
+// نسخة مختصرة للصفحات اللي بترجع بخطأ (أول صفحة بس)
+async function getMedicines(q) {
+  return (await getMedicinesPage({ q, page: 1 })).rows;
 }
 
 // يحوّل قيمة سن (نص) لرقم أو null لو فاضية
@@ -32,8 +56,11 @@ function parseAge(val) {
 // ============ قائمة الأصناف ============
 router.get('/', async (req, res, next) => {
   try {
-    const medicines = await getMedicines(req.query.q);
-    res.render('products', { medicines, categories: CATEGORIES, error: null, searchQuery: req.query.q || '', active: 'products' });
+    const form = req.query.form || '';
+    const instock = req.query.instock === '1';
+    const r = await getMedicinesPage({ q: req.query.q, form, instock, page: req.query.page });
+    res.locals.pg = { page: r.page, pages: r.pages, total: r.total, form, instock };
+    res.render('products', { medicines: r.rows, categories: CATEGORIES, error: null, searchQuery: req.query.q || '', active: 'products' });
   } catch (err) {
     next(err);
   }
@@ -48,8 +75,9 @@ router.post('/add', async (req, res, next) => {
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
       cost_price_unit, stock_units, min_stock_units,
-      conditions_tags, min_age_years, max_age_years
+      conditions_tags, min_age_years, max_age_years, form_kind
     } = req.body;
+    const kind = FORMS[form_kind] ? form_kind : null;
 
     if (!name || !name.trim() || sale_price_unit === undefined || sale_price_unit === '') {
       const medicines = await getMedicines();
@@ -63,8 +91,8 @@ router.post('/add', async (req, res, next) => {
           units_per_strip, strips_per_box,
           sale_price_unit, sale_price_strip, sale_price_box,
           cost_price_unit, stock_units, min_stock_units,
-          conditions_tags, min_age_years, max_age_years
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          conditions_tags, min_age_years, max_age_years, form_kind
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
       [
         name.trim(),
         generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -85,7 +113,8 @@ router.post('/add', async (req, res, next) => {
         parseInt(min_stock_units) || 10,
         conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
         parseAge(min_age_years),
-        parseAge(max_age_years)
+        parseAge(max_age_years),
+        kind
       ]
     );
 
@@ -109,8 +138,9 @@ router.post('/:id/update', async (req, res, next) => {
       units_per_strip, strips_per_box,
       sale_price_unit, sale_price_strip, sale_price_box,
       cost_price_unit, min_stock_units,
-      conditions_tags, min_age_years, max_age_years
+      conditions_tags, min_age_years, max_age_years, form_kind
     } = req.body;
+    const kind = FORMS[form_kind] ? form_kind : null;
 
     await query(
       `UPDATE medicines SET
@@ -119,8 +149,8 @@ router.post('/:id/update', async (req, res, next) => {
           units_per_strip = $10, strips_per_box = $11,
           sale_price_unit = $12, sale_price_strip = $13, sale_price_box = $14,
           cost_price_unit = $15, min_stock_units = $16,
-          conditions_tags = $17, min_age_years = $18, max_age_years = $19
-       WHERE id = $20`,
+          conditions_tags = $17, min_age_years = $18, max_age_years = $19, form_kind = COALESCE($20, form_kind)
+       WHERE id = $21`,
       [
         name.trim(),
         generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -141,6 +171,7 @@ router.post('/:id/update', async (req, res, next) => {
         conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
         parseAge(min_age_years),
         parseAge(max_age_years),
+        kind,
         req.params.id
       ]
     );

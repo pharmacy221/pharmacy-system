@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "seed": "node db/seed.js",
-    "import-drugs": "node db/import-drugs.js"
+    "import-drugs": "node db/import-drugs.js",
+    "import-inventory": "node db/import-inventory.js"
   },
   "engines": {
     "node": ">=18.0.0"

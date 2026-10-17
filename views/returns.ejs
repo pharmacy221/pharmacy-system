@@ -36,7 +36,7 @@
               <% returns.forEach(r => { %>
                 <tr>
                   <td data-label="الصنف"><%= r.medicine_name_snapshot || '-' %></td>
-                  <td class="mono" data-label="الكمية"><%= r.quantity %> <%= unitLabels[r.sale_unit] || r.sale_unit %></td>
+                  <td class="mono" data-label="الكمية"><%= r.quantity %> <%= r.unit_label || unitLabels[r.sale_unit] || r.sale_unit %></td>
                   <td class="mono accent" data-label="المبلغ المرجّع"><%= Number(r.refund_amount).toFixed(2) %></td>
                   <td style="color:var(--text-muted)" data-label="السبب"><%= r.reason || '-' %></td>
                   <td data-label="رجعت للمخزون؟"><%= r.restocked ? 'آه' : 'لأ' %></td>
@@ -117,7 +117,7 @@
 
         saleItemSelect.innerHTML = data.items.map(it => {
           const available = it.quantity - Number(it.already_returned_units || 0);
-          return `<option value="${it.id}" data-max="${available}">${it.medicine_name_snapshot} - ${it.quantity} ${unitLabelsJs[it.sale_unit] || it.sale_unit} (متاح للإرجاع: ${available}) - ${Number(it.total).toFixed(2)} ج.م</option>`;
+          return `<option value="${it.id}" data-max="${available}">${it.medicine_name_snapshot} - ${it.quantity} ${it.unit_label || unitLabelsJs[it.sale_unit] || it.sale_unit} (متاح للإرجاع: ${available}) - ${Number(it.total).toFixed(2)} ج.م</option>`;
         }).join('');
 
         returnForm.style.display = 'block';

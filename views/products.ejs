@@ -40,6 +40,11 @@
         <input type="text" name="q" value="<%= searchQuery %>" placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود أو السريال أو الحالة المرضية..." style="flex:1; min-width:220px;">
         <button type="submit" class="btn-outline btn-sm">بحث</button>
         <% if (searchQuery) { %><a href="/products" class="btn-ghost-sm">إلغاء</a><% } %>
+        <select name="form" style="max-width:160px;" onchange="this.form.submit()">
+          <option value="">كل الأنواع</option>
+          <% formKinds.forEach(k => { %><option value="<%= k.key %>" <%= pg.form === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %>
+        </select>
+        <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" name="instock" value="1" <%= pg.instock ? 'checked' : '' %> onchange="this.form.submit()"> المتاح فقط</label>
         <a href="/products/batches" class="btn-ghost-sm">📦 التشغيلات والصلاحية</a>
         <a href="/symptom-search" class="btn-ghost-sm">🩺 بحث بالحالة</a>
       </form>
@@ -47,13 +52,13 @@
 
     <div class="two-col">
       <div class="card">
-        <h2>كل الأصناف (<%= medicines.length %>)</h2>
+        <h2>الأصناف (<%= pg.total != null ? pg.total : medicines.length %>)</h2>
         <% if (medicines.length === 0) { %>
           <div class="empty-state">مفيش أصناف مضافة لسه</div>
         <% } else { %>
           <table>
             <thead>
-              <tr><th>الاسم</th><th>الباركود</th><th>السريال</th><th>الفئة</th><th>الحالات</th><th>سعر الحبة</th><th>المخزون (حبة)</th><th></th></tr>
+              <tr><th>الاسم</th><th>الباركود</th><th>السريال</th><th>الفئة</th><th>الحالات</th><th>النوع</th><th>سعر الوحدة</th><th>المخزون</th><th></th></tr>
             </thead>
             <tbody>
               <% medicines.forEach(p => { %>
@@ -68,8 +73,9 @@
                   <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="السريال"><%= p.serial_number || '—' %></td>
                   <td style="color:var(--text-muted)" data-label="الفئة"><%= p.category %></td>
                   <td style="color:var(--text-muted); font-size:12px;" data-label="الحالات"><%= p.conditions_tags || '—' %></td>
-                  <td class="mono" data-label="سعر الحبة"><%= Number(p.sale_price_unit).toFixed(2) %></td>
-                  <td class="mono" style="<%= p.stock_units <= p.min_stock_units ? 'color:var(--amber)' : '' %>" data-label="المخزون (حبة)"><%= p.stock_units %></td>
+                  <td data-label="النوع" style="font-size:12px;"><%= p.dosage_form || '—' %></td>
+                  <td class="mono" data-label="سعر الوحدة"><%= Number(p.sale_price_unit).toFixed(2) %> <span style="color:var(--text-muted); font-size:11px;">/ <%= unitName(p) %></span></td>
+                  <td class="mono" style="<%= p.stock_units <= p.min_stock_units ? 'color:var(--amber)' : '' %>" data-label="المخزون"><%= p.stock_units %> <span style="font-size:11px; color:var(--text-muted);"><%= unitName(p) %></span></td>
                   <td style="display:flex; gap:6px; flex-wrap:wrap;" data-label="إجراءات">
                     <button type="button" class="btn-ghost-sm" onclick="document.getElementById('edit-<%= p.id %>').classList.toggle('open')">تعديل</button>
                     <button type="button" class="btn-ghost-sm"
@@ -103,6 +109,13 @@
                       <div class="field" style="margin-bottom:0;">
                         <label>الشكل الدوائي</label>
                         <input type="text" name="dosage_form" value="<%= p.dosage_form || '' %>" placeholder="أقراص / شراب / حقن...">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>نوع المنتج (يحدد وحدات البيع)</label>
+                        <select name="form_kind">
+                          <option value="">— بدون تغيير —</option>
+                          <% formKinds.forEach(k => { %><option value="<%= k.key %>" <%= p.form_kind === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %>
+                        </select>
                       </div>
                       <div class="field" style="margin-bottom:0;">
                         <label>الشركة المصنعة</label>
@@ -197,6 +210,13 @@
               <% }) %>
             </tbody>
           </table>
+          <% if (pg.pages > 1) { const qs = (n) => '?' + new URLSearchParams({ q: searchQuery || '', form: pg.form || '', instock: pg.instock ? '1' : '', page: n }).toString(); %>
+            <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:14px;">
+              <% if (pg.page > 1) { %><a class="btn-ghost-sm" href="<%= qs(pg.page - 1) %>">السابق</a><% } %>
+              <span style="color:var(--text-muted); font-size:13px;">صفحة <%= pg.page %> من <%= pg.pages %></span>
+              <% if (pg.page < pg.pages) { %><a class="btn-ghost-sm" href="<%= qs(pg.page + 1) %>">التالي</a><% } %>
+            </div>
+          <% } %>
         <% } %>
       </div>
 
@@ -222,6 +242,13 @@
           <div class="field">
             <label>الشكل الدوائي</label>
             <input type="text" name="dosage_form" placeholder="أقراص / شراب / حقن...">
+          </div>
+          <div class="field">
+            <label>نوع المنتج (يحدد وحدات البيع)</label>
+            <select name="form_kind">
+              <option value="">— حبة / شريط / علبة (عادي) —</option>
+              <% formKinds.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %>
+            </select>
           </div>
           <div class="field">
             <label>الشركة المصنعة</label>

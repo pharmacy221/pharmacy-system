@@ -33,7 +33,7 @@
             <% items.forEach(item => { %>
               <tr>
                 <td data-label="الصنف"><%= item.medicine_name_snapshot %></td>
-                <td data-label="الوحدة"><%= unitLabels[item.sale_unit] || item.sale_unit %></td>
+                <td data-label="الوحدة"><%= item.unit_label || unitLabels[item.sale_unit] || item.sale_unit %></td>
                 <td class="mono" data-label="الكمية"><%= item.quantity %></td>
                 <td class="mono" data-label="السعر"><%= Number(item.unit_price).toFixed(2) %></td>
                 <td class="mono" data-label="الإجمالي"><%= Number(item.total).toFixed(2) %></td>

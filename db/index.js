@@ -17,7 +17,7 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Supabase محتاج SSL؛ الإعداد ده شغال مع أي شهادة عادية من غير ما نحتاج ملف CA خاص
-  ssl: { rejectUnauthorized: false }
+  ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false }
 });
 
 pool.on('error', (err) => {

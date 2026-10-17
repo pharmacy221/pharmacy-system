@@ -119,7 +119,7 @@
           <% items.forEach(item => { %>
             <tr>
               <td data-label="الصنف"><strong><%= item.medicine_name_snapshot %></strong></td>
-              <td class="mono" style="text-align:center; color:#64748b; font-size:11px;" data-label="الوحدة"><%= unitLabels[item.sale_unit] || item.sale_unit %></td>
+              <td class="mono" style="text-align:center; color:#64748b; font-size:11px;" data-label="الوحدة"><%= item.unit_label || unitLabels[item.sale_unit] || item.sale_unit %></td>
               <td style="text-align: center;" class="mono" data-label="الكمية"><%= item.quantity %></td>
               <td style="text-align: center;" class="mono" data-label="السعر"><%= Number(item.unit_price).toFixed(2) %></td>
               <td style="text-align: left;" class="mono" data-label="الإجمالي"><%= Number(item.total).toFixed(2) %></td>

@@ -103,7 +103,7 @@
         </tr>
         <tr>
           <td data-label="الكمية">الكمية</td>
-          <td data-label="التفاصيل"><%= ret.quantity %> <%= ({unit:'حبة',strip:'شريط',box:'علبة'})[ret.sale_unit] || ret.sale_unit %></td>
+          <td data-label="التفاصيل"><%= ret.quantity %> <%= ret.unit_label || ({unit:'حبة',strip:'شريط',box:'علبة'})[ret.sale_unit] || ret.sale_unit %></td>
         </tr>
         <tr>
           <td data-label="السبب">السبب</td>
