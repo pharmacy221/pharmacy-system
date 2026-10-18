@@ -13,7 +13,7 @@
   <div class="page">
     <div class="page-header">
       <div>
-        <h1>فاتورة #<%= invoice.id %></h1>
+        <h1>فاتورة #<%= invoice.id %><% if (invoice.status === 'voided') { %> <span style="color:var(--danger); font-size:16px;">(ملغاة)</span><% } %></h1>
         <p><%= new Date(invoice.created_at).toLocaleString('ar-EG') %></p>
       </div>
       <div style="display:flex; gap:8px;">
@@ -71,6 +71,11 @@
         </div>
         <% if (invoice.notes) { %>
           <p style="margin-top:14px; color:var(--text-muted); font-size:13px;">ملاحظات: <%= invoice.notes %></p>
+        <% } %>
+        <% if (invoice.status === 'voided') { %>
+          <p style="margin-top:14px; color:var(--danger); font-size:13px;">
+            ملغاة بتاريخ <%= invoice.voided_at ? new Date(invoice.voided_at).toLocaleString('ar-EG') : '' %> — السبب: <%= invoice.void_reason || '-' %>
+          </p>
         <% } %>
       </div>
     </div>

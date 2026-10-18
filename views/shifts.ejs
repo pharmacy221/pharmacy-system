@@ -32,14 +32,44 @@
         <h2>الوردية الحالية مفتوحة</h2>
         <div class="field"><label>تاريخ البداية</label><div class="mono"><%= new Date(activeShift.opened_at).toLocaleString('ar-EG') %></div></div>
         <div class="field"><label>النقدية الافتتاحية</label><div class="mono"><%= Number(activeShift.opening_balance).toFixed(2) %> ج.م</div></div>
-        <div class="field"><label>مبيعات الوردية حتى الآن</label><div class="mono accent"><%= Number(liveSalesTotal).toFixed(2) %> ج.م</div></div>
+        <div class="field"><label>مبيعات الوردية حتى الآن (<%= Number(summary.invoice_count) %> فاتورة)</label><div class="mono accent"><%= Number(liveSalesTotal).toFixed(2) %> ج.م</div></div>
+        <div class="field"><label>مبيعات نقدية</label><div class="mono"><%= Number(summary.cash_sales).toFixed(2) %> ج.م</div></div>
+        <div class="field"><label>مبيعات بطاقة / أخرى</label><div class="mono"><%= (Number(summary.card_sales) + Number(summary.other_sales)).toFixed(2) %> ج.م</div></div>
+        <div class="field"><label>مرتجعات وإلغاءات نقدية</label><div class="mono"><%= Number(summary.cash_refunds).toFixed(2) %> ج.م</div></div>
+        <div class="field"><label>إيداعات / سحوبات</label><div class="mono"><%= Number(summary.deposits).toFixed(2) %> / <%= Number(summary.withdrawals).toFixed(2) %> ج.م</div></div>
+        <div class="field"><label>النقدية المتوقعة في الدرج</label><div class="mono accent"><%= Number(summary.expected_cash).toFixed(2) %> ج.م</div></div>
 
         <hr style="border-color: var(--border); margin: 16px 0;">
 
-        <form action="/shifts/close" method="POST">
+        <form action="/shifts/cash" method="POST" onsubmit="var b=this.querySelector('button');b.disabled=true;">
+          <div class="field">
+            <label>إيداع / سحب نقدية من الدرج</label>
+            <select name="type" required>
+              <option value="deposit">إيداع (إضافة نقدية للدرج)</option>
+              <option value="withdrawal">سحب (أخذ نقدية من الدرج)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>المبلغ</label>
+            <input type="number" step="0.01" min="0.01" name="amount" required placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>ملاحظة (اختياري)</label>
+            <input type="text" name="note" maxlength="200">
+          </div>
+          <button type="submit" class="btn">تسجيل الحركة</button>
+        </form>
+
+        <hr style="border-color: var(--border); margin: 16px 0;">
+
+        <form action="/shifts/close" method="POST" onsubmit="var b=this.querySelector('button');b.disabled=true;">
           <div class="field">
             <label>المبلغ الفعلي الموجود بالدرج حالياً (بعد العد)</label>
-            <input type="number" step="0.01" name="closing_balance" required placeholder="أدخل المبلغ الموجود في الدرج الآن">
+            <input type="number" step="0.01" min="0" name="closing_balance" required placeholder="أدخل المبلغ الموجود في الدرج الآن">
+          </div>
+          <div class="field">
+            <label>ملاحظة الإغلاق (اختياري)</label>
+            <input type="text" name="close_note" maxlength="200">
           </div>
           <button type="submit" class="btn btn-danger">إنهاء وإغلاق الوردية</button>
         </form>
@@ -53,7 +83,7 @@
       <% } else { %>
         <table>
           <thead>
-            <tr><th>الكاشير</th><th>تاريخ البداية</th><th>تاريخ الإغلاق</th><th>الافتتاحي</th><th>الختامي</th></tr>
+            <tr><th>الكاشير</th><th>تاريخ البداية</th><th>تاريخ الإغلاق</th><th>الافتتاحي</th><th>المتوقع</th><th>الفعلي</th><th>العجز / الزيادة</th></tr>
           </thead>
           <tbody>
             <% pastShifts.forEach(s => { %>
@@ -62,7 +92,9 @@
                 <td class="mono" style="color:var(--text-muted)" data-label="تاريخ البداية"><%= new Date(s.opened_at).toLocaleString('ar-EG') %></td>
                 <td class="mono" style="color:var(--text-muted)" data-label="تاريخ الإغلاق"><%= s.closed_at ? new Date(s.closed_at).toLocaleString('ar-EG') : '-' %></td>
                 <td class="mono" data-label="الافتتاحي"><%= Number(s.opening_balance).toFixed(2) %></td>
-                <td class="mono" data-label="الختامي"><%= s.closing_balance !== null ? Number(s.closing_balance).toFixed(2) : '-' %></td>
+                <td class="mono" data-label="المتوقع"><%= s.expected_cash !== null && s.expected_cash !== undefined ? Number(s.expected_cash).toFixed(2) : '-' %></td>
+                <td class="mono" data-label="الفعلي"><%= s.closing_balance !== null ? Number(s.closing_balance).toFixed(2) : '-' %></td>
+                <td class="mono" data-label="العجز / الزيادة" <% if (s.cash_difference !== null && s.cash_difference !== undefined && Number(s.cash_difference) !== 0) { %>style="color:<%= Number(s.cash_difference) < 0 ? 'var(--danger, #c0392b)' : 'var(--accent)' %>"<% } %>><%= s.cash_difference !== null && s.cash_difference !== undefined ? (Number(s.cash_difference) > 0 ? '+' : '') + Number(s.cash_difference).toFixed(2) + (Number(s.cash_difference) < 0 ? ' (عجز)' : Number(s.cash_difference) > 0 ? ' (زيادة)' : '') : '-' %></td>
               </tr>
             <% }) %>
           </tbody>

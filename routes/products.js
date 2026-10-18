@@ -1,10 +1,11 @@
 // routes/products.js
 // إدارة الأصناف (الأدوية/المستحضرات) + التشغيلات (batches) والصلاحية
 const express = require('express');
-const { query, queryOne } = require('../db');
-const { requireLogin, requireAdmin } = require('../middleware/auth');
+const { query, queryOne, getClient } = require('../db');
+const { requireLogin, requireAdmin, requireRole } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
 const { FORMS, FORM_ORDER, saleLevels } = require('../lib/drug-form');
+const { BusinessError, isBusinessError, statusFor, userMessage } = require('../lib/errors');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -136,6 +137,30 @@ function stockTotal(pack, b) {
   return n(b.stock_box_qty) * pack.ups * pack.spb + n(b.stock_strip_qty) * pack.ups + n(b.stock_unit_qty);
 }
 
+// يشغّل مجموعة عمليات في transaction واحدة (أو يتراجع عنها كلها لو أي واحدة فشلت)
+async function withTransaction(fn) {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (e) { /* الاتصال اتقفل */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// تاريخ بصيغة YYYY-MM-DD وفعلي (مش 2026-02-31)، وإلا null
+function parseDateStrict(v) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return null;
+  const s = v.trim();
+  const d = new Date(`${s}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s ? null : s;
+}
+
 // ============ قائمة الأصناف ============
 router.get('/', async (req, res, next) => {
   try {
@@ -172,46 +197,77 @@ router.post('/add', requireAdmin, async (req, res, next) => {
       return res.render('products', { medicines, categories: CATEGORIES, error: 'اسم الصنف وسعر البيع مطلوبين', searchQuery: '', active: 'products' });
     }
 
-    await query(
-      `INSERT INTO medicines (
-          name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
-          requires_prescription, controlled_substance,
-          units_per_strip, strips_per_box,
-          sale_price_unit, sale_price_strip, sale_price_box,
-          cost_price_unit, stock_units, min_stock_units,
-          conditions_tags, min_age_years, max_age_years, form_kind
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-      [
-        name.trim(),
-        generic_name && generic_name.trim() ? generic_name.trim() : null,
-        (category || 'أدوية').trim(),
-        dosage_form && dosage_form.trim() ? dosage_form.trim() : null,
-        manufacturer && manufacturer.trim() ? manufacturer.trim() : null,
-        barcode && barcode.trim() ? barcode.trim() : null,
-        serial_number && serial_number.trim() ? serial_number.trim() : null,
-        requires_prescription === 'on',
-        controlled_substance === 'on',
-        pack.ups,
-        pack.spb,
-        parseFloat(sale_price_unit) || 0,
-        pack.strip,
-        pack.box,
-        parseFloat(cost_price_unit) || 0,
-        stockTotal(pack, req.body),
-        parseInt(min_stock_units) || 10,
-        conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
-        parseAge(min_age_years),
-        parseAge(max_age_years),
-        kind
-      ]
-    );
+    // رصيد افتتاحي: لازم يتسجل كتشغيلة بتاريخ صلاحية (المخزون مصدره التشغيلات بس)
+    const openingUnits = stockTotal(pack, req.body);
+    const openingExpiry = parseDateStrict(req.body.opening_expiry);
+    const costUnit = Math.max(parseFloat(cost_price_unit) || 0, 0);
+    if (openingUnits > 0 && !openingExpiry) {
+      throw new BusinessError('الرصيد الافتتاحي لازم يكون معاه تاريخ صلاحية صحيح');
+    }
 
-    await logActivity(req, { action: 'إضافة صنف جديد', entityType: 'medicine', details: { medicine_name: name.trim() } });
+    const medicineId = await withTransaction(async (c) => {
+      if (openingUnits > 0) {
+        const t = await c.query(`SELECT to_char(pharmacy_today(), 'YYYY-MM-DD') AS today`);
+        if (openingExpiry < t.rows[0].today) throw new BusinessError('تاريخ صلاحية الرصيد الافتتاحي منتهي؛ مينفعش تسجله كمخزون صالح');
+      }
+      // المخزون بيبدأ بصفر والتشغيلة هي اللي بتزوّده (trigger المزامنة)
+      const ins = await c.query(
+        `INSERT INTO medicines (
+            name, generic_name, category, dosage_form, manufacturer, barcode, serial_number,
+            requires_prescription, controlled_substance,
+            units_per_strip, strips_per_box,
+            sale_price_unit, sale_price_strip, sale_price_box,
+            cost_price_unit, stock_units, min_stock_units,
+            conditions_tags, min_age_years, max_age_years, form_kind
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,$18,$19,$20)
+         RETURNING id`,
+        [
+          name.trim(),
+          generic_name && generic_name.trim() ? generic_name.trim() : null,
+          (category || 'أدوية').trim(),
+          dosage_form && dosage_form.trim() ? dosage_form.trim() : null,
+          manufacturer && manufacturer.trim() ? manufacturer.trim() : null,
+          barcode && barcode.trim() ? barcode.trim() : null,
+          serial_number && serial_number.trim() ? serial_number.trim() : null,
+          requires_prescription === 'on',
+          controlled_substance === 'on',
+          pack.ups,
+          pack.spb,
+          parseFloat(sale_price_unit) || 0,
+          pack.strip,
+          pack.box,
+          costUnit,
+          parseInt(min_stock_units) || 10,
+          conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
+          parseAge(min_age_years),
+          parseAge(max_age_years),
+          kind
+        ]
+      );
+      const id = ins.rows[0].id;
+      if (openingUnits > 0) {
+        await c.query(
+          `INSERT INTO batches (medicine_id, batch_number, expiry_date, received_units, quantity_units, cost_price_unit)
+           VALUES ($1, 'OPENING', $2, $3, $3, $4)`,
+          [id, openingExpiry, openingUnits, costUnit]
+        );
+      }
+      return id;
+    });
+
+    await logActivity(req, {
+      action: 'إضافة صنف جديد', entityType: 'medicine', entityId: medicineId,
+      details: { medicine_name: name.trim(), opening_units: openingUnits, opening_expiry: openingUnits > 0 ? openingExpiry : null }
+    });
     res.redirect('/products');
   } catch (err) {
     if (err.code === '23505') {
       const medicines = await getMedicines();
       return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود أو السريال ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
+    }
+    if (isBusinessError(err)) {
+      const medicines = await getMedicines();
+      return res.status(statusFor(err)).render('products', { medicines, categories: CATEGORIES, error: userMessage(err), searchQuery: '', active: 'products' });
     }
     next(err);
   }
@@ -233,55 +289,64 @@ router.post('/:id/update', requireAdmin, async (req, res, next) => {
     const current = await queryOne('SELECT form_kind, stock_units FROM medicines WHERE id = $1', [req.params.id]);
     const pack = packFields(kind || (current && current.form_kind) || null, req.body);
 
-    await query(
-      `UPDATE medicines SET
-          name = $1, generic_name = $2, category = $3, dosage_form = $4, manufacturer = $5, barcode = $6, serial_number = $7,
-          requires_prescription = $8, controlled_substance = $9,
-          units_per_strip = $10, strips_per_box = $11,
-          sale_price_unit = $12, sale_price_strip = $13, sale_price_box = $14,
-          cost_price_unit = $15, min_stock_units = $16,
-          conditions_tags = $17, min_age_years = $18, max_age_years = $19, form_kind = COALESCE($20, form_kind)
-       WHERE id = $21`,
-      [
-        name.trim(),
-        generic_name && generic_name.trim() ? generic_name.trim() : null,
-        (category || 'أدوية').trim(),
-        dosage_form && dosage_form.trim() ? dosage_form.trim() : null,
-        manufacturer && manufacturer.trim() ? manufacturer.trim() : null,
-        barcode && barcode.trim() ? barcode.trim() : null,
-        serial_number && serial_number.trim() ? serial_number.trim() : null,
-        requires_prescription === 'on',
-        controlled_substance === 'on',
-        pack.ups,
-        pack.spb,
-        parseFloat(sale_price_unit) || 0,
-        pack.strip,
-        pack.box,
-        parseFloat(cost_price_unit) || 0,
-        parseInt(min_stock_units) || 10,
-        conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
-        parseAge(min_age_years),
-        parseAge(max_age_years),
-        kind,
-        req.params.id
-      ]
-    );
+    await withTransaction(async (c) => {
+      await c.query(
+        `UPDATE medicines SET
+            name = $1, generic_name = $2, category = $3, dosage_form = $4, manufacturer = $5, barcode = $6, serial_number = $7,
+            requires_prescription = $8, controlled_substance = $9,
+            units_per_strip = $10, strips_per_box = $11,
+            sale_price_unit = $12, sale_price_strip = $13, sale_price_box = $14,
+            cost_price_unit = $15, min_stock_units = $16,
+            conditions_tags = $17, min_age_years = $18, max_age_years = $19, form_kind = COALESCE($20, form_kind)
+         WHERE id = $21`,
+        [
+          name.trim(),
+          generic_name && generic_name.trim() ? generic_name.trim() : null,
+          (category || 'أدوية').trim(),
+          dosage_form && dosage_form.trim() ? dosage_form.trim() : null,
+          manufacturer && manufacturer.trim() ? manufacturer.trim() : null,
+          barcode && barcode.trim() ? barcode.trim() : null,
+          serial_number && serial_number.trim() ? serial_number.trim() : null,
+          requires_prescription === 'on',
+          controlled_substance === 'on',
+          pack.ups,
+          pack.spb,
+          parseFloat(sale_price_unit) || 0,
+          pack.strip,
+          pack.box,
+          parseFloat(cost_price_unit) || 0,
+          parseInt(min_stock_units) || 10,
+          conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
+          parseAge(min_age_years),
+          parseAge(max_age_years),
+          kind,
+          req.params.id
+        ]
+      );
 
-    // المخزون بيتغير بس لو المستخدم عدّل خانات الكمية (عشان مانكتبش فوق مبيعات حصلت في نفس الوقت)
-    if (req.body.stock_dirty === '1') {
-      const newStock = stockTotal(pack, req.body);
-      await query('UPDATE medicines SET stock_units = $1 WHERE id = $2', [newStock, req.params.id]);
-      await logActivity(req, {
-        action: 'تعديل كمية المخزون يدويًا', entityType: 'medicine', entityId: req.params.id,
-        details: { from: current ? current.stock_units : null, to: newStock }
-      });
-    }
+      // المخزون بيتغير بس لو المستخدم عدّل خانات الكمية (عشان مانكتبش فوق مبيعات حصلت في نفس الوقت).
+      // التغيير بيتم كتسوية مسجلة على التشغيلات (قبل/بعد/الفرق/السبب/المستخدم) في نفس الـ transaction.
+      if (req.body.stock_dirty === '1') {
+        await c.query('SELECT adjust_medicine_stock($1, $2, $3, $4, $5)', [
+          req.params.id,
+          stockTotal(pack, req.body),
+          'تعديل من شاشة الأصناف',
+          req.session.userId,
+          req.session.username || null
+        ]);
+      }
+    });
+
     await logActivity(req, { action: 'تعديل بيانات صنف', entityType: 'medicine', entityId: req.params.id });
     res.redirect('/products');
   } catch (err) {
     if (err.code === '23505') {
       const medicines = await getMedicines();
       return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود أو السريال ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
+    }
+    if (isBusinessError(err)) {
+      const medicines = await getMedicines();
+      return res.status(statusFor(err)).render('products', { medicines, categories: CATEGORIES, error: userMessage(err), searchQuery: '', active: 'products' });
     }
     next(err);
   }
@@ -306,7 +371,7 @@ router.get('/batches', async (req, res, next) => {
 
     const batches = await query(`
       SELECT b.*, m.name AS medicine_name, s.name AS supplier_name,
-             (b.expiry_date - CURRENT_DATE) AS days_left
+             (b.expiry_date - pharmacy_today()) AS days_left
       FROM batches b
       JOIN medicines m ON m.id = b.medicine_id
       LEFT JOIN suppliers s ON s.id = b.supplier_id
@@ -321,34 +386,46 @@ router.get('/batches', async (req, res, next) => {
 });
 
 // إضافة تشغيلة جديدة (استلام بضاعة) - المخزون والتكلفة بيتحدّثوا أوتوماتيك بالـ trigger
-router.post('/batches/add', async (req, res, next) => {
+// صلاحية: أدمن / صيدلي فقط. والتحقق من البيانات هنا قبل الوصول لقاعدة البيانات.
+router.post('/batches/add', requireRole('admin', 'pharmacist'), async (req, res, next) => {
   try {
     const { medicine_id, supplier_id, batch_number, expiry_date, received_units, cost_price_unit } = req.body;
 
-    if (!medicine_id || !expiry_date || !received_units || !cost_price_unit) {
-      return res.status(400).send('كل الحقول (الصنف، تاريخ الصلاحية، الكمية، سعر التكلفة) مطلوبة');
+    const medId = parseInt(medicine_id, 10);
+    const qty = Number(received_units);
+    const cost = Number(cost_price_unit);
+    const expiry = parseDateStrict(expiry_date);
+    const supId = supplier_id ? parseInt(supplier_id, 10) : null;
+
+    if (!Number.isInteger(medId) || medId <= 0 || !expiry || received_units === undefined || received_units === '' || cost_price_unit === undefined || cost_price_unit === '') {
+      throw new BusinessError('كل الحقول (الصنف، تاريخ الصلاحية، الكمية، سعر التكلفة) مطلوبة وبصيغة صحيحة');
     }
+    if (!Number.isInteger(qty) || qty <= 0) throw new BusinessError('الكمية لازم تكون رقم صحيح أكبر من صفر');
+    if (qty > 10000000) throw new BusinessError('الكمية كبيرة جدًا');
+    if (!Number.isFinite(cost) || cost < 0) throw new BusinessError('سعر التكلفة لازم يكون صفر أو أكتر');
+    if (supplier_id && (!Number.isInteger(supId) || supId <= 0)) throw new BusinessError('المورد غير صحيح');
+
+    const today = (await queryOne(`SELECT to_char(pharmacy_today(), 'YYYY-MM-DD') AS today`)).today;
+    if (expiry < today) throw new BusinessError('تاريخ الصلاحية منتهي؛ مينفعش تستلم تشغيلة منتهية كمخزون صالح');
+
+    const med = await queryOne('SELECT id FROM medicines WHERE id = $1 AND is_active = true', [medId]);
+    if (!med) throw new BusinessError('الصنف غير موجود أو غير مفعّل', 404);
 
     await query(
       `INSERT INTO batches (medicine_id, supplier_id, batch_number, expiry_date, received_units, quantity_units, cost_price_unit)
        VALUES ($1, $2, $3, $4, $5, $5, $6)`,
-      [
-        medicine_id,
-        supplier_id || null,
-        batch_number && batch_number.trim() ? batch_number.trim() : null,
-        expiry_date,
-        parseInt(received_units),
-        parseFloat(cost_price_unit)
-      ]
+      [medId, supId, batch_number && batch_number.trim() ? batch_number.trim() : null, expiry, qty, cost]
     );
 
     await logActivity(req, {
       action: 'استلام تشغيلة جديدة',
       entityType: 'batch',
-      details: { medicine_id, quantity: parseInt(received_units), expiry_date }
+      details: { medicine_id: medId, quantity: qty, expiry_date: expiry, cost_price_unit: cost }
     });
     res.redirect('/products/batches');
   } catch (err) {
+    if (err && err.code === '23503') return res.status(400).send('المورد أو الصنف غير موجود');
+    if (isBusinessError(err)) return res.status(statusFor(err)).send(userMessage(err));
     next(err);
   }
 });

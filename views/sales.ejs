@@ -28,7 +28,7 @@
           <tbody>
             <% invoices.forEach(inv => { %>
               <tr>
-                <td class="mono" data-label="رقم الفاتورة"><a href="/sales/<%= inv.id %>" style="color:var(--accent)">#<%= inv.id %></a></td>
+                <td class="mono" data-label="رقم الفاتورة"><a href="/sales/<%= inv.id %>" style="color:var(--accent)">#<%= inv.id %></a><% if (inv.status === 'voided') { %> <span class="badge" style="color:var(--danger)">ملغاة</span><% } %></td>
                 <td class="mono" data-label="عدد الأصناف"><%= inv.items_count %></td>
                 <td class="mono" data-label="الإجمالي"><%= Number(inv.total).toFixed(2) %></td>
                 <td class="mono accent" data-label="الربح"><%= Number(inv.profit).toFixed(2) %></td>
@@ -38,9 +38,10 @@
                 <td class="mono" style="color:var(--text-muted)" data-label="الوقت"><%= new Date(inv.created_at).toLocaleString('ar-EG') %></td>
                 <td data-label="إجراءات" style="display:flex; gap:6px;">
                   <a href="/pos/receipt/<%= inv.id %>" target="_blank" class="btn-ghost-sm">إيصال</a>
-                  <% if (role === 'admin') { %>
-                    <form action="/sales/<%= inv.id %>/delete" method="POST" onsubmit="return confirm('تأكيد حذف الفاتورة؟ هيرجع كل الكميات المباعة للمخزون')">
-                      <button class="btn-ghost-sm" type="submit">حذف</button>
+                  <% if (role === 'admin' && inv.status !== 'voided') { %>
+                    <form action="/sales/<%= inv.id %>/void" method="POST" onsubmit="var r = prompt('سبب إلغاء الفاتورة (مطلوب). الفاتورة هتفضل محفوظة بحالة ملغاة، وهيرجع للمخزون المتبقي منها بس (من غير المرتجع والتشغيلات المنتهية)'); if (!r || !r.trim()) return false; this.reason.value = r.trim(); return true;">
+                      <input type="hidden" name="reason" value="">
+                      <button class="btn-ghost-sm" type="submit">إلغاء</button>
                     </form>
                   <% } %>
                 </td>

@@ -30,7 +30,26 @@ const FIELD_LABELS = {
 
   old_value: 'القيمة القديمة',
   new_value: 'القيمة الجديدة',
-  status: 'الحالة'
+  status: 'الحالة',
+
+  // مرتجعات / إلغاء فواتير
+  refund_amount: 'المبلغ المسترد',
+  refund_due: 'المبلغ المستحق رده',
+  refund_method: 'طريقة الرد',
+  restored_units: 'الوحدات المرجّعة للمخزون',
+  restocked_units: 'الوحدات المرجّعة للمخزون',
+  expired_units_not_restocked: 'وحدات منتهية لم تُرجَع للمخزون',
+  unbatched_units_not_restocked: 'وحدات بدون تشغيلة صالحة لم تُرجَع',
+
+  // تسوية المخزون / الأرصدة الافتتاحية
+  difference: 'الفرق',
+  opening_units: 'الرصيد الافتتاحي (وحدات)',
+  opening_expiry: 'صلاحية الرصيد الافتتاحي',
+  cost_price_unit: 'تكلفة الوحدة',
+
+  // الورديات
+  expected_cash: 'النقدية المتوقعة',
+  actual_cash: 'النقدية الفعلية'
 };
 
 const LTR_FIELDS = new Set(['customer_phone', 'entity_id', 'batch_number']);

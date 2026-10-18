@@ -64,6 +64,7 @@
 
         <form action="/returns/add" method="POST" id="returnForm" style="display:none;">
           <input type="hidden" name="invoice_id" id="invoiceIdField">
+          <input type="hidden" name="idempotency_key" value="<%= typeof idemKey !== 'undefined' ? idemKey : '' %>">
           <div class="field">
             <label>بند الفاتورة</label>
             <select name="sale_item_id" id="saleItemSelect" required>
@@ -76,6 +77,15 @@
           <div class="field">
             <label>السبب (اختياري)</label>
             <textarea name="reason" rows="2" placeholder="عيب في المنتج، غلط في الطلب..."></textarea>
+          </div>
+          <div class="field">
+            <label>طريقة رد المبلغ</label>
+            <select name="refund_method">
+              <option value="">نفس طريقة دفع الفاتورة</option>
+              <option value="cash">نقدي</option>
+              <option value="card">بطاقة</option>
+              <option value="none">استبدال / بدون رد مبلغ</option>
+            </select>
           </div>
           <div class="field" style="display:flex; align-items:center; gap:8px;">
             <input type="checkbox" name="restock" id="restockCheck" checked style="width:auto;">
@@ -106,7 +116,7 @@
         const res = await fetch('/returns/invoice/' + encodeURIComponent(id));
         const data = await res.json();
         if (!data.found) {
-          invoiceSearchStatus.textContent = 'الفاتورة غير موجودة';
+          invoiceSearchStatus.textContent = data.message || 'الفاتورة غير موجودة';
           invoiceSearchStatus.className = 'scan-status err';
           returnForm.style.display = 'none';
           return;
@@ -116,7 +126,7 @@
         invoiceIdField.value = data.invoice.id;
 
         saleItemSelect.innerHTML = data.items.map(it => {
-          const available = it.quantity - Number(it.already_returned_units || 0);
+          const available = it.quantity - Number(it.already_returned_qty || 0);
           return `<option value="${it.id}" data-max="${available}">${it.medicine_name_snapshot} - ${it.quantity} ${it.unit_label || unitLabelsJs[it.sale_unit] || it.sale_unit} (متاح للإرجاع: ${available}) - ${Number(it.total).toFixed(2)} ج.م</option>`;
         }).join('');
 

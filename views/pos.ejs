@@ -527,20 +527,26 @@
     // ---------- إتمام البيع ----------
     const CHECKOUT_LABEL = 'تسجيل البيع وطباعة الفاتورة';
     function fail(msg) { $('checkoutError').textContent = msg; $('checkoutError').style.display = 'block'; $('checkoutBtn').disabled = !hasActiveShift; $('checkoutBtn').textContent = CHECKOUT_LABEL; }
+    // مفتاح منع تكرار البيع: نفس السلة + نفس الصفحة = نفس المفتاح، فلو الطلب اتبعت مرتين (ضغطة مزدوجة/انقطاع نت)
+    // السيرفر يرجّع نفس الفاتورة بدل ما يبيع تاني. لو السلة اتغيرت المفتاح بيتغير.
+    const PAGE_KEY = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+    function hashStr(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
     async function doCheckout() {
       $('checkoutError').style.display = 'none';
       if (!hasActiveShift) return fail('لازم تفتح وردية أولاً قبل إجراء عملية البيع');
       if (!cart.length) return fail('الفاتورة فارغة، أضف صنفاً أولاً');
       $('checkoutBtn').disabled = true; $('checkoutBtn').textContent = 'جاري التسجيل...';
       try {
+        const payload = {
+          items: cart.map((i) => ({ medicine_id: i.m.id, sale_unit: i.sale_unit, quantity: i.quantity })),
+          customer_name: $('customerName').value, customer_phone: $('customerPhone').value,
+          payment_method: payMethod, discount_amount: manualDiscount(subtotal()),
+          coupon_code: appliedCoupon ? appliedCoupon.code : null, notes: $('notes').value
+        };
+        payload.idempotency_key = 'pos-' + PAGE_KEY + '-' + hashStr(JSON.stringify(payload));
         const res = await fetch('/pos/checkout', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items: cart.map((i) => ({ medicine_id: i.m.id, sale_unit: i.sale_unit, quantity: i.quantity })),
-            customer_name: $('customerName').value, customer_phone: $('customerPhone').value,
-            payment_method: payMethod, discount_amount: manualDiscount(subtotal()),
-            coupon_code: appliedCoupon ? appliedCoupon.code : null, notes: $('notes').value
-          })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.ok) window.location.href = '/pos/receipt/' + data.invoiceId; else fail(data.error || 'حدث خطأ، يرجى المحاولة لاحقاً');

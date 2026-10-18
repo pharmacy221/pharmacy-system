@@ -20,4 +20,20 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('غير مصرح لك بالدخول لهذه الصفحة');
 }
 
-module.exports = { requireLogin, requireAdmin };
+// صلاحية على مستوى السيرفر لعمليات حساسة (مرتجعات، استلام تشغيلات...): بيسمح بالأدوار المحددة بس.
+// الرفض بيرجع 403 صريح (مش redirect) عشان العملية متتنفذش ومحدش يفتكر إنها نجحت.
+function requireRole(...roles) {
+  return function (req, res, next) {
+    if (!req.session || !req.session.userId) {
+      return res.redirect('/login');
+    }
+    if (roles.includes(req.session.role)) {
+      return next();
+    }
+    const wantsJson = req.xhr || ((req.headers && req.headers.accept) || '').includes('application/json');
+    if (wantsJson) return res.status(403).json({ error: 'غير مصرح لك بتنفيذ هذه العملية' });
+    return res.status(403).send('غير مصرح لك بتنفيذ هذه العملية');
+  };
+}
+
+module.exports = { requireLogin, requireAdmin, requireRole };

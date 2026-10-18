@@ -1,8 +1,11 @@
 // routes/returns.js
+// المرتجعات: كل خطوات المرتجع (التحقق من الكمية، المبلغ بعد الخصم، المخزون على التشغيلة الأصلية،
+// حركة الخزنة، سجل التدقيق) بتتم جوه دالة واحدة في قاعدة البيانات: create_return() — transaction واحدة.
+const crypto = require('crypto');
 const express = require('express');
 const { query, queryOne } = require('../db');
-const { requireLogin } = require('../middleware/auth');
-const { logActivity } = require('../lib/activity-log');
+const { requireLogin, requireRole } = require('../middleware/auth');
+const { isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -17,7 +20,8 @@ router.get('/', async (req, res, next) => {
       LIMIT 200
     `);
 
-    res.render('returns', { returns, error: null, active: 'returns' });
+    // مفتاح منع تكرار تسجيل نفس المرتجع لو الفورم اتبعت مرتين
+    res.render('returns', { returns, error: null, idemKey: 'ret-' + crypto.randomUUID(), active: 'returns' });
   } catch (err) {
     next(err);
   }
@@ -26,13 +30,16 @@ router.get('/', async (req, res, next) => {
 // بحث عن فاتورة برقمها لعرض بنودها القابلة للإرجاع
 router.get('/invoice/:id', async (req, res, next) => {
   try {
-    const invoice = await queryOne('SELECT * FROM sale_invoices WHERE id = $1', [req.params.id]);
+    const id = parseInt(req.params.id, 10);
+    const invoice = Number.isInteger(id) ? await queryOne('SELECT * FROM sale_invoices WHERE id = $1', [id]) : null;
     if (!invoice) return res.json({ found: false });
+    if (invoice.status === 'voided') return res.json({ found: false, message: 'الفاتورة دي ملغاة ومينفعش عليها مرتجع' });
 
+    // الكمية المرتجعة سابقًا بنفس وحدة بيع البند (مربوطة ببند الفاتورة نفسه مش بالصنف)
     const items = await query(`
       SELECT si.*, COALESCE((
-        SELECT SUM(r.quantity_units) FROM returns r WHERE r.invoice_id = si.invoice_id AND r.medicine_id = si.medicine_id
-      ), 0) AS already_returned_units
+        SELECT SUM(r.quantity) FROM returns r WHERE r.sale_item_id = si.id
+      ), 0)::int AS already_returned_qty
       FROM sale_items si WHERE si.invoice_id = $1 ORDER BY si.id
     `, [invoice.id]);
 
@@ -42,57 +49,38 @@ router.get('/invoice/:id', async (req, res, next) => {
   }
 });
 
-// ============ تسجيل مرتجع جديد ============
-router.post('/add', async (req, res, next) => {
+// ============ تسجيل مرتجع جديد (أدمن / صيدلي) ============
+router.post('/add', requireRole('admin', 'pharmacist'), async (req, res, next) => {
   try {
-    const { invoice_id, sale_item_id, quantity, reason, restock } = req.body;
+    const { sale_item_id, quantity, reason, restock, refund_method } = req.body;
 
-    const saleItem = await queryOne('SELECT * FROM sale_items WHERE id = $1', [sale_item_id]);
-    if (!saleItem) return res.status(400).send('بند الفاتورة غير موجود');
+    const itemId = parseInt(sale_item_id, 10);
+    if (!Number.isInteger(itemId)) return res.status(400).send('بند الفاتورة غير موجود');
 
-    const qty = parseInt(quantity) || 1;
-    if (qty < 1) return res.status(400).send('الكمية لازم تكون 1 أو أكتر');
+    const qty = parseInt(quantity, 10);
+    if (!Number.isInteger(qty) || qty < 1) return res.status(400).send('الكمية لازم تكون 1 أو أكتر');
 
-    // مينفعش يترجع أكتر من اللي اتباع (مع حساب اللي اترجع قبل كده من نفس الفاتورة والصنف والوحدة)
-    const alreadyReturned = await queryOne(
-      `SELECT COALESCE(SUM(quantity), 0)::int AS q FROM returns
-       WHERE invoice_id = $1 AND medicine_id = $2 AND sale_unit = $3`,
-      [saleItem.invoice_id, saleItem.medicine_id, saleItem.sale_unit]
-    );
-    const remaining = Number(saleItem.quantity) - (alreadyReturned ? alreadyReturned.q : 0);
-    if (qty > remaining) {
-      return res.status(400).send(`الكمية المرتجعة أكبر من المتاح للإرجاع (المتبقي: ${Math.max(remaining, 0)})`);
-    }
+    const method = refund_method ? String(refund_method) : null;
+    if (method && !['cash', 'card', 'other', 'none'].includes(method)) return res.status(400).send('طريقة رد المبلغ غير صحيحة');
 
-    const unitsPerQty = saleItem.quantity_units / saleItem.quantity; // للتحويل لنفس وحدة sale_unit
-    const quantityUnits = Math.round(qty * unitsPerQty);
-    const refundAmount = Math.round((Number(saleItem.unit_price) * qty) * 100) / 100;
+    // لو الصفحة قديمة ومفيهاش مفتاح: نولّد مفتاح من (المستخدم + البند + الكمية + شريحة 10 ثواني) كحماية من الضغط المزدوج
+    const key = cleanKey(req.body.idempotency_key)
+      || `auto-${req.session.userId}-${itemId}-${qty}-${Math.floor(Date.now() / 10000)}`;
 
-    await query(
-      `INSERT INTO returns (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, refund_amount, reason, restocked, created_by, unit_label)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [
-        saleItem.invoice_id,
-        saleItem.medicine_id,
-        saleItem.medicine_name_snapshot,
-        saleItem.sale_unit,
-        qty,
-        quantityUnits,
-        refundAmount,
-        reason || null,
-        restock === 'on',
-        req.session.userId,
-        saleItem.unit_label || null
-      ]
-    );
+    await query('SELECT create_return($1, $2, $3, $4, $5, $6, $7, $8) AS result', [
+      itemId,
+      qty,
+      reason || null,
+      restock === 'on',
+      method,
+      req.session.userId,
+      req.session.username || null,
+      key
+    ]);
 
-    await logActivity(req, {
-      action: 'تسجيل مرتجع',
-      entityType: 'return',
-      details: { medicine_name: saleItem.medicine_name_snapshot, quantity: qty, reason: reason || null }
-    });
     res.redirect('/returns');
   } catch (err) {
+    if (isBusinessError(err)) return res.status(statusFor(err)).send(userMessage(err));
     next(err);
   }
 });
@@ -100,12 +88,13 @@ router.post('/add', async (req, res, next) => {
 // إيصال طباعة لمرتجع واحد
 router.get('/:id/receipt', async (req, res, next) => {
   try {
-    const ret = await queryOne(`
+    const id = parseInt(req.params.id, 10);
+    const ret = Number.isInteger(id) ? await queryOne(`
       SELECT r.*, si.customer_name
       FROM returns r
       LEFT JOIN sale_invoices si ON si.id = r.invoice_id
       WHERE r.id = $1
-    `, [req.params.id]);
+    `, [id]) : null;
     if (!ret) return res.status(404).send('المرتجع غير موجود');
     res.render('returns-receipt', { ret });
   } catch (err) {

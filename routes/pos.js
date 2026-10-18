@@ -6,6 +6,7 @@ const { query, queryOne, getClient } = require('../db');
 const { requireLogin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
 const { saleLevels } = require('../lib/drug-form');
+const { BusinessError, isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -29,6 +30,23 @@ function withLevels(m) {
   return { ...m, levels: info.levels, default_level: info.defaultLevel, form_label: info.formLabel, single: info.single };
 }
 
+// الكمية اللي تتباع فعلاً = مجموع التشغيلات الصالحة (غير المنتهية) بتاريخ الصيدلية المحلي.
+// شاشة الكاشير بتعرضها في stock_units عشان الكاشير ميشوفش مخزون منتهي على إنه متاح.
+async function withSellableStock(rows) {
+  if (!rows.length) return rows;
+  const sums = await query(
+    `SELECT medicine_id, SUM(quantity_units)::int AS units
+     FROM batches
+     WHERE medicine_id = ANY($1::int[]) AND quantity_units > 0 AND expiry_date >= pharmacy_today()
+     GROUP BY medicine_id`,
+    [rows.map((r) => r.id)]
+  );
+  const byId = new Map(sums.map((r) => [r.medicine_id, r.units]));
+  return rows.map((r) => ({ ...r, stock_total_units: r.stock_units, stock_units: byId.get(r.id) || 0 }));
+}
+
+const SELLABLE_EXISTS = `EXISTS (SELECT 1 FROM batches b WHERE b.medicine_id = medicines.id AND b.quantity_units > 0 AND b.expiry_date >= pharmacy_today())`;
+
 const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => '\\' + c);
 
 // البحث الفوري (اسم تجاري / مادة فعالة / باركود). كل كلمة لازم تتلاقي في الاسم أو المادة الفعالة.
@@ -50,13 +68,13 @@ router.get('/search', async (req, res, next) => {
 
     const rows = await query(
       `SELECT * FROM medicines
-       WHERE is_active = true ${instock ? 'AND stock_units > 0' : ''}
+       WHERE is_active = true ${instock ? `AND ${SELLABLE_EXISTS}` : ''}
          AND (barcode = $1 OR (${conds.join(' AND ')}))
-       ORDER BY (barcode = $1) DESC, (stock_units > 0) DESC, (name ILIKE ${prefix}) DESC, lower(name)
+       ORDER BY (barcode = $1) DESC, (${SELLABLE_EXISTS}) DESC, (name ILIKE ${prefix}) DESC, lower(name)
        LIMIT 40`,
       params
     );
-    res.json({ results: rows.map(withLevels) });
+    res.json({ results: (await withSellableStock(rows)).map(withLevels) });
   } catch (err) {
     next(err);
   }
@@ -70,10 +88,10 @@ router.get('/alternatives', async (req, res, next) => {
     const rows = await query(
       `SELECT * FROM medicines
        WHERE is_active = true AND id <> $1 AND generic_name = $2
-       ORDER BY (stock_units > 0) DESC, sale_price_box ASC NULLS LAST, lower(name) LIMIT 40`,
+       ORDER BY (${SELLABLE_EXISTS}) DESC, sale_price_box ASC NULLS LAST, lower(name) LIMIT 40`,
       [m.id, m.generic_name]
     );
-    res.json({ results: rows.map(withLevels), base: m.name });
+    res.json({ results: (await withSellableStock(rows)).map(withLevels), base: m.name });
   } catch (err) {
     next(err);
   }
@@ -88,7 +106,8 @@ router.get('/lookup', async (req, res, next) => {
     const medicine = await queryOne('SELECT * FROM medicines WHERE barcode = $1 AND is_active = true', [barcode]);
     if (!medicine) return res.json({ found: false });
 
-    res.json({ found: true, medicine: withLevels(medicine) });
+    const [sellable] = await withSellableStock([medicine]);
+    res.json({ found: true, medicine: withLevels(sellable) });
   } catch (err) {
     next(err);
   }
@@ -122,39 +141,61 @@ router.get('/coupon-check', async (req, res, next) => {
   }
 });
 
-// تسجيل عملية بيع وخصم المخزون (FEFO) - الشغل التفصيلي بيتم جوه الـ DB triggers
-router.post('/checkout', async (req, res, next) => {
+// تسجيل عملية بيع وخصم المخزون (FEFO من التشغيلات الصالحة فقط).
+// خصم المخزون والتحويل بين الوحدات بيتم جوه الـ DB triggers (migration_002) في نفس الـ transaction،
+// وإجمالي الفاتورة والخصم بيتحسبوا في قاعدة البيانات من البنود (finalize_sale_invoice).
+router.post('/checkout', async (req, res) => {
   const { items, customer_name, customer_phone, payment_method, discount_amount, coupon_code, notes } = req.body;
+  const idemKey = cleanKey(req.body.idempotency_key || req.get('Idempotency-Key'));
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'السلة فارغة' });
   }
+  if (items.length > 200) {
+    return res.status(400).json({ error: 'عدد الأصناف في الفاتورة كبير جدًا' });
+  }
 
   const userId = req.session.userId;
   const client = await getClient();
+  let began = false;
 
   try {
-    await client.query('BEGIN');
+    // أرقام الأصناف لازم تكون صحيحة (بنقفلها كلها مرة واحدة بترتيب الرقم عشان نتجنب deadlock بين كاشيرين)
+    const ids = [...new Set(items.map((i) => parseInt(i && i.medicine_id, 10)))];
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new BusinessError('بيانات الصنف غير صحيحة');
 
-    // لازم وردية مفتوحة قبل أي عملية بيع
+    await client.query('BEGIN');
+    began = true;
+
+    // لازم وردية مفتوحة قبل أي عملية بيع (FOR SHARE: إغلاق الوردية بيستنى لحد ما البيع يخلص)
     const activeShiftResult = await client.query(
-      'SELECT id FROM shifts WHERE opened_by = $1 AND closed_at IS NULL',
+      'SELECT id FROM shifts WHERE opened_by = $1 AND closed_at IS NULL FOR SHARE',
       [userId]
     );
     if (activeShiftResult.rows.length === 0) {
-      throw new Error('يجب فتح وردية أولاً قبل إجراء عملية البيع');
+      throw new BusinessError('يجب فتح وردية أولاً قبل إجراء عملية البيع');
+    }
+    const shiftId = activeShiftResult.rows[0].id;
+
+    // نفس الطلب اتبعت قبل كده؟ (ضغطة مزدوجة / إعادة إرسال بعد انقطاع) نرجّع نفس الفاتورة من غير بيع تاني
+    if (idemKey) {
+      const dup = await client.query('SELECT id FROM sale_invoices WHERE idempotency_key = $1 AND created_by = $2', [idemKey, userId]);
+      if (dup.rows[0]) {
+        await client.query('ROLLBACK');
+        began = false;
+        return res.json({ ok: true, invoiceId: dup.rows[0].id, duplicate: true });
+      }
     }
 
     // خصم الكوبون (لو موجود)
-    let couponDiscount = 0;
     let appliedCoupon = null;
-    if (coupon_code && coupon_code.trim()) {
-      const code = coupon_code.trim().toUpperCase();
+    if (coupon_code && String(coupon_code).trim()) {
+      const code = String(coupon_code).trim().toUpperCase();
       const couponResult = await client.query('SELECT * FROM coupons WHERE code = $1 FOR UPDATE', [code]);
       const coupon = couponResult.rows[0];
-      if (!coupon) throw new Error('الكوبون غير موجود');
-      if (!coupon.active) throw new Error('الكوبون متوقف');
-      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) throw new Error('الكوبون منتهي الصلاحية');
+      if (!coupon) throw new BusinessError('الكوبون غير موجود');
+      if (!coupon.active) throw new BusinessError('الكوبون متوقف');
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) throw new BusinessError('الكوبون منتهي الصلاحية');
       appliedCoupon = coupon;
     }
 
@@ -163,35 +204,39 @@ router.post('/checkout', async (req, res, next) => {
     // احتياج للتحقق من وجود روشتة لأي صنف يستلزمها (تنبيه فقط، مش قفل صارم)
     let requiresPrescriptionWarning = false;
 
-    // إنشاء رأس الفاتورة (discount مبدئي، الـ total هيتحدث تلقائياً بعد إدخال البنود)
+    const medResult = await client.query('SELECT * FROM medicines WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE', [ids]);
+    const medicines = new Map(medResult.rows.map((m) => [m.id, m]));
+
+    // إنشاء رأس الفاتورة (الخصم والإجمالي النهائيين بيتحسبوا في finalize_sale_invoice بعد إدخال البنود)
     const invoiceResult = await client.query(
-      `INSERT INTO sale_invoices (customer_name, customer_phone, discount, payment_method, notes, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      `INSERT INTO sale_invoices (customer_name, customer_phone, discount, payment_method, notes, created_by, shift_id, idempotency_key)
+       VALUES ($1, $2, 0, $3, $4, $5, $6, $7) RETURNING id`,
       [
         customer_name && customer_name.trim() ? customer_name.trim() : null,
         customer_phone && customer_phone.trim() ? customer_phone.trim() : null,
-        0, // بنحدث الخصم النهائي بعد ما نعرف الإجمالي الفرعي
         ['cash', 'card', 'other'].includes(payment_method) ? payment_method : 'cash',
         notes || null,
-        userId
+        userId,
+        shiftId,
+        idemKey
       ]
     );
     const invoiceId = invoiceResult.rows[0].id;
 
     let subtotal = 0;
-    const soldSummary = [];
 
     for (const item of items) {
-      const medResult = await client.query('SELECT * FROM medicines WHERE id = $1 FOR UPDATE', [item.medicine_id]);
-      const medicine = medResult.rows[0];
-      if (!medicine) throw new Error(`الصنف رقم ${item.medicine_id} غير موجود`);
+      const medicine = medicines.get(parseInt(item.medicine_id, 10));
+      if (!medicine) throw new BusinessError(`الصنف رقم ${item.medicine_id} غير موجود`);
+      if (!medicine.is_active) throw new BusinessError(`الصنف "${medicine.name}" غير مفعّل`);
 
       // الوحدة لازم تكون من وحدات الصنف (مثلاً الشراب/الحقنة ملهمش شريط)
       const lv = saleLevels(medicine);
       const chosen = lv.levels.find((l) => l.key === item.sale_unit) || lv.levels.find((l) => l.key === lv.defaultLevel) || lv.levels[0];
       const saleUnit = chosen.key;
       const unitLabel = chosen.label;
-      const quantity = Math.max(parseInt(item.quantity) || 1, 1);
+      const quantity = Math.max(parseInt(item.quantity, 10) || 1, 1);
+      if (quantity > 100000) throw new BusinessError('الكمية كبيرة جدًا');
 
       let unitPrice;
       if (saleUnit === 'unit') unitPrice = Number(medicine.sale_price_unit);
@@ -203,17 +248,16 @@ router.post('/checkout', async (req, res, next) => {
 
       if (medicine.requires_prescription) requiresPrescriptionWarning = true;
 
-      // الـ triggers هتتولى: تحويل الكمية للحبة، خصم المخزون بنظام FEFO، حساب متوسط التكلفة، ورفض البيع لو المخزون غير كافي
+      // الـ triggers هتتولى: تحويل الكمية للحبة، خصم FEFO من التشغيلات الصالحة بس، حساب التكلفة،
+      // وتسجيل التشغيلة المخصوم منها، ورفض البيع لو الكمية الصالحة غير كافية
       await client.query(
         `INSERT INTO sale_items (invoice_id, medicine_id, medicine_name_snapshot, sale_unit, quantity, quantity_units, unit_price, total, unit_label)
          VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)`,
         [invoiceId, medicine.id, medicine.name, saleUnit, quantity, unitPrice, lineTotal, unitLabel]
       );
-
-      soldSummary.push({ name: medicine.name, sale_unit: saleUnit, quantity, unit_label: unitLabel });
     }
 
-    // حساب الخصم النهائي (يدوي + كوبون) وتحديثه على الفاتورة (الـ trigger بيعيد حساب total = مجموع البنود - discount)
+    // الخصم النهائي (يدوي + كوبون) — الإجمالي بيتحسب في قاعدة البيانات من البنود ويتسجل في الخزنة
     let couponAmount = 0;
     if (appliedCoupon) {
       couponAmount = appliedCoupon.discount_percent
@@ -222,24 +266,33 @@ router.post('/checkout', async (req, res, next) => {
     }
     const totalDiscount = Math.min(manualDiscount + couponAmount, subtotal);
 
-    await client.query(
-      `UPDATE sale_invoices SET discount = $1, total = $2 WHERE id = $3`,
-      [totalDiscount, Math.max(0, subtotal - totalDiscount), invoiceId]
-    );
+    const finalized = await client.query('SELECT finalize_sale_invoice($1, $2, $3) AS total', [invoiceId, totalDiscount, userId]);
+    const invoiceTotal = Number(finalized.rows[0].total);
 
     await client.query('COMMIT');
+    began = false;
 
     await logActivity(req, {
       action: 'إتمام عملية بيع',
       entityType: 'sale_invoice',
       entityId: invoiceId,
-      details: { total: Math.max(0, subtotal - totalDiscount), customer_name: customer_name || null }
+      details: { total: invoiceTotal, customer_name: customer_name || null }
     });
 
     res.json({ ok: true, invoiceId, requiresPrescriptionWarning });
   } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(400).json({ error: err.message || 'فشل إتمام عملية البيع' });
+    if (began) {
+      try { await client.query('ROLLBACK'); } catch (e) { /* الاتصال اتقفل */ }
+    }
+    // طلب مكرر بنفس المفتاح وصل في نفس اللحظة: الفاتورة الأولى هي اللي اتسجلت
+    if (err && err.code === '23505' && idemKey) {
+      try {
+        const dup = await client.query('SELECT id FROM sale_invoices WHERE idempotency_key = $1 AND created_by = $2', [idemKey, userId]);
+        if (dup.rows[0]) return res.json({ ok: true, invoiceId: dup.rows[0].id, duplicate: true });
+      } catch (e) { /* نكمل للرد بالخطأ */ }
+    }
+    if (!isBusinessError(err)) console.error('❌ فشل إتمام عملية البيع:', err);
+    res.status(statusFor(err) === 500 ? 400 : statusFor(err)).json({ error: userMessage(err, 'فشل إتمام عملية البيع') });
   } finally {
     client.release();
   }

@@ -7,7 +7,10 @@
     "start": "node server.js",
     "seed": "node db/seed.js",
     "import-drugs": "node db/import-drugs.js",
-    "import-inventory": "node db/import-inventory.js"
+    "import-inventory": "node db/import-inventory.js",
+    "test": "node test/run.js",
+    "migrate": "node db/migrate.js",
+    "report-stock-mismatch": "node db/report-stock-mismatch.js"
   },
   "engines": {
     "node": ">=18.0.0"
