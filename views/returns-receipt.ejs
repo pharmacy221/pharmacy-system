@@ -124,6 +124,9 @@
     </table>
 
     <div class="total">المبلغ المرجّع: <%= Number(ret.refund_amount).toFixed(2) %> ج.م</div>
+    <% if (Number(ret.credit_applied) > 0) { %>
+      <div class="total" style="font-size:14px;">منه تم خصمه من مديونية العميل: <%= Number(ret.credit_applied).toFixed(2) %> ج.م — المرتد نقدًا: <%= (Number(ret.refund_amount) - Number(ret.credit_applied)).toFixed(2) %> ج.م</div>
+    <% } %>
     <button class="btn-print" onclick="window.print()">🖨 طباعة الإيصال</button>
   </div>
 </body>

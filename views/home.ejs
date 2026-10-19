@@ -57,7 +57,18 @@
       <a href="/products" class="quick-card"><span class="icon">💊</span><span class="label">الأصناف والمخزون</span></a>
       <a href="/products/batches" class="quick-card"><span class="icon">📦</span><span class="label">التشغيلات والصلاحية</span></a>
       <a href="/symptom-search" class="quick-card"><span class="icon">🩺</span><span class="label">بحث بالحالة</span></a>
+      <a href="/customers" class="quick-card"><span class="icon">🧑‍🤝‍🧑</span><span class="label">العملاء والآجل</span></a>
+      <a href="/customers/refills" class="quick-card"><span class="icon">🔔</span><span class="label">تذكيرات الصرف</span></a>
     </div>
+    <% if (typeof role !== 'undefined' && (role === 'admin' || role === 'pharmacist')) { %>
+      <div class="quick-section-title">إدارة المخزون والرقابة</div>
+      <div class="quick-grid">
+        <a href="/reorder" class="quick-card"><span class="icon">🛒</span><span class="label">النواقص الذكية</span></a>
+        <a href="/stocktake" class="quick-card"><span class="icon">📋</span><span class="label">الجرد</span></a>
+        <a href="/controlled" class="quick-card"><span class="icon">🔒</span><span class="label">سجل الأدوية الخاضعة</span></a>
+        <a href="/purchases" class="quick-card"><span class="icon">📥</span><span class="label">المشتريات</span></a>
+      </div>
+    <% } %>
     <% if (typeof role !== 'undefined' && role === 'admin') { %>
       <div class="quick-section-title">أدوات الأدمن</div>
       <div class="quick-grid">
@@ -65,6 +76,7 @@
         <a href="/suppliers" class="quick-card"><span class="icon">🚚</span><span class="label">الموردين</span></a>
         <a href="/coupons" class="quick-card"><span class="icon">🎟️</span><span class="label">الكوبونات</span></a>
         <a href="/reports" class="quick-card"><span class="icon">📈</span><span class="label">التقارير</span></a>
+        <a href="/insights" class="quick-card"><span class="icon">🧠</span><span class="label">التحليلات الذكية</span></a>
         <a href="/settings" class="quick-card"><span class="icon">⚙️</span><span class="label">الإعدادات</span></a>
         <a href="/activity-log" class="quick-card"><span class="icon">📋</span><span class="label">سجل النشاطات</span></a>
         <a href="/payroll" class="quick-card"><span class="icon">👥</span><span class="label">الموظفين والرواتب</span></a>

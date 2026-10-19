@@ -625,3 +625,95 @@ input:focus, select:focus, textarea:focus {
 :root[data-theme="light"] .theme-toggle .ico-sun { display: inline; }
 :root[data-theme="light"] .theme-toggle .ico-moon { display: none; }
 .theme-toggle-floating { position: fixed; top: 14px; left: 14px; z-index: 50; background: var(--surface); }
+
+/* ============================================================
+   العملاء / النواقص الذكية / الجرد / سجل الرقابة / التحليلات
+   ============================================================ */
+.muted { color: var(--text-muted); }
+.pos-num { color: var(--accent); }
+.neg-num { color: var(--danger); }
+.warn-num { color: var(--amber); }
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 16px; }
+.toolbar .field { margin-bottom: 0; }
+.toolbar input, .toolbar select { min-width: 140px; }
+.inline-form { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.inline-form input, .inline-form select { width: auto; padding: 6px 8px; font-size: 12px; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.pill {
+  display: inline-block; padding: 2px 10px; border-radius: 100px; font-size: 12px; font-weight: 700;
+  background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); white-space: nowrap;
+}
+.pill.ok { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+.pill.warn { background: var(--amber-dim); color: var(--amber); border-color: transparent; }
+.pill.bad { background: var(--danger-dim); color: var(--alert-error-text); border-color: transparent; }
+
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.tabs a {
+  padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--text-muted);
+  border: 1px solid var(--border); background: var(--surface);
+}
+.tabs a.on { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+
+.btn-wa { background: #25d366; color: #06301a; }
+.btn-wa:hover { filter: brightness(1.05); }
+
+/* مؤشرات سريعة */
+.kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: relative; overflow: hidden; }
+.kpi::before { content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
+.kpi.warn::before { background: var(--amber); }
+.kpi.bad::before { background: var(--danger); }
+.kpi .k-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.kpi .k-value { font-family: var(--mono); font-size: 22px; font-weight: 700; }
+.kpi .k-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* خريطة الزحمة */
+.heat { display: grid; grid-template-columns: 64px repeat(24, minmax(14px, 1fr)); gap: 3px; direction: ltr; font-size: 10px; }
+.heat .h-day { direction: rtl; text-align: right; color: var(--text-muted); font-size: 12px; align-self: center; }
+.heat .h-hour { text-align: center; color: var(--text-muted); }
+.heat .h-cell { aspect-ratio: 1 / 1; border-radius: 4px; background: var(--accent); min-height: 14px; }
+.heat-scroll { overflow-x: auto; padding-bottom: 6px; }
+.heat-scroll .heat { min-width: 620px; }
+
+/* شريط تقدم صغير */
+.bar-mini { height: 8px; border-radius: 6px; background: var(--surface-2); overflow: hidden; min-width: 70px; }
+.bar-mini > span { display: block; height: 100%; background: var(--accent); }
+.bar-mini.warn > span { background: var(--amber); }
+.bar-mini.bad > span { background: var(--danger); }
+
+/* كروت العملاء/الموردين المجمّعة */
+.group-card { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 18px; background: var(--surface); overflow: hidden; }
+.group-card > header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 14px 18px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.group-card > header h3 { margin: 0; font-size: 15px; }
+.group-card .body { padding: 6px 12px 12px; overflow-x: auto; }
+.qty-input { width: 80px !important; text-align: center; font-family: var(--mono); }
+
+/* العدّ في الجرد */
+.count-input { width: 96px !important; text-align: center; font-family: var(--mono); font-size: 16px; padding: 8px; }
+.count-input.saved { border-color: var(--accent); }
+.count-input.err { border-color: var(--danger); }
+.scan-banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px; border: 1px dashed var(--accent); border-radius: var(--radius); background: var(--accent-softer); margin-bottom: 16px; }
+.scan-banner input { max-width: 280px; font-family: var(--mono); }
+.scan-flash { font-weight: 700; color: var(--accent); min-height: 20px; }
+.blind .col-system { display: none; }
+
+/* بيانات الصرف الرقابي في الكاشير */
+.controlled-box { border: 1px solid var(--amber); background: var(--amber-dim); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.controlled-box h4 { margin: 0 0 8px; font-size: 13px; color: var(--amber); }
+.cust-suggest { position: relative; }
+.cust-suggest .dropdown {
+  position: absolute; z-index: 30; inset-inline: 0; top: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.3); max-height: 260px; overflow: auto;
+}
+.cust-suggest .dropdown button { display: block; width: 100%; text-align: right; background: none; border: 0; border-bottom: 1px solid var(--border); padding: 9px 12px; color: var(--text); cursor: pointer; font-family: var(--sans); }
+.cust-suggest .dropdown button:hover { background: var(--surface-2); }
+.cust-chip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--accent-softer); border: 1px solid var(--accent-ring); margin-bottom: 10px; font-size: 13px; }
+.refill-chip { background: var(--amber-dim); color: var(--amber); border: 0; border-radius: 100px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--sans); }
+
+@media print {
+  .topbar, .toolbar, .tabs, .no-print, .btn, .btn-ghost-sm, .btn-outline { display: none !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .card, .group-card { border-color: #999 !important; background: #fff !important; }
+  th, td { color: #000 !important; border-color: #bbb !important; }
+}

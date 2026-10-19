@@ -23,6 +23,11 @@ const drugLookupRoutes = require('./routes/drug-lookup');
 const payrollRoutes = require('./routes/payroll');
 const expensesRoutes = require('./routes/expenses');
 const purchasesRoutes = require('./routes/purchases');
+const customersRoutes = require('./routes/customers');
+const reorderRoutes = require('./routes/reorder');
+const stocktakeRoutes = require('./routes/stocktake');
+const controlledRoutes = require('./routes/controlled');
+const insightsRoutes = require('./routes/insights');
 
 
 const { requireLogin } = require('./middleware/auth');
@@ -108,6 +113,11 @@ app.use('/drug-lookup', drugLookupRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/expenses', expensesRoutes);
 app.use('/purchases', purchasesRoutes);
+app.use('/customers', customersRoutes);
+app.use('/reorder', reorderRoutes);
+app.use('/stocktake', stocktakeRoutes);
+app.use('/controlled', controlledRoutes);
+app.use('/insights', insightsRoutes);
 
 app.use((req, res) => {
   res.status(404).render('error', { code: 404, message: 'الصفحة غير موجودة' });

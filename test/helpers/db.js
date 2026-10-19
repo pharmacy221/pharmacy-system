@@ -12,7 +12,7 @@ const { Client, Pool } = require('pg');
 const ADMIN_URL = process.env.TEST_DATABASE_URL || '';
 const SKIP = ADMIN_URL ? false : 'TEST_DATABASE_URL غير محدد — اختبارات قاعدة البيانات اتخطّت';
 const DB_DIR = path.join(__dirname, '..', '..', 'db');
-const FILES = ['pharmacy_schema.sql', 'migration_forms.sql', 'migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql'];
+const FILES = ['pharmacy_schema.sql', 'migration_forms.sql', 'migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql', 'migration_005_customers_credit_compliance.sql'];
 
 function withDb(url, dbname) {
   const u = new URL(url);
@@ -108,13 +108,13 @@ async function openShift(db, userId, opening = 0) {
 
 // بيع مباشر عبر SQL (نفس خطوات routes/pos.js): رأس + بنود + finalize_sale_invoice.
 // items: [{ med, qty, unit='unit', price }]  price = سعر الوحدة المختارة
-async function sell(db, { user = CASHIER, shift, items, discount = 0, method = 'cash' }) {
+async function sell(db, { user = CASHIER, shift, items, discount = 0, method = 'cash', customer = null, credit = 0 }) {
   const c = await db.pool.connect();
   try {
     await c.query('BEGIN');
     const inv = (await c.query(
-      `INSERT INTO sale_invoices (discount, payment_method, created_by, shift_id) VALUES (0, $1, $2, $3) RETURNING id`,
-      [method, user, shift]
+      `INSERT INTO sale_invoices (discount, payment_method, created_by, shift_id, customer_id) VALUES (0, $1, $2, $3, $4) RETURNING id`,
+      [method, user, shift, customer]
     )).rows[0].id;
     for (const it of items) {
       const unit = it.unit || 'unit';
@@ -125,7 +125,7 @@ async function sell(db, { user = CASHIER, shift, items, discount = 0, method = '
         [inv, it.med, unit, it.qty, it.price, total]
       );
     }
-    const t = (await c.query('SELECT finalize_sale_invoice($1, $2, $3) AS total', [inv, discount, user])).rows[0].total;
+    const t = (await c.query('SELECT finalize_sale_invoice($1, $2, $3, $4) AS total', [inv, discount, user, credit])).rows[0].total;
     await c.query('COMMIT');
     return { id: inv, total: Number(t) };
   } catch (e) {

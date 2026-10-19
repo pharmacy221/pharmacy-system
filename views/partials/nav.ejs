@@ -22,12 +22,19 @@
         <a href="/purchases" class="<%= currentActive === 'purchases' ? 'active' : '' %>">المشتريات</a>
       <% } %>
       <a href="/products/batches" class="<%= currentActive === 'batches' ? 'active' : '' %>">التشغيلات والصلاحية</a>
+      <a href="/customers" class="<%= currentActive === 'customers' ? 'active' : '' %>">العملاء</a>
+      <% if (typeof role !== 'undefined' && (role === 'admin' || role === 'pharmacist')) { %>
+        <a href="/reorder" class="<%= currentActive === 'reorder' ? 'active' : '' %>">النواقص الذكية</a>
+        <a href="/stocktake" class="<%= currentActive === 'stocktake' ? 'active' : '' %>">الجرد</a>
+        <a href="/controlled" class="<%= currentActive === 'controlled' ? 'active' : '' %>">سجل الرقابة</a>
+      <% } %>
      <a href="/symptom-search" class="<%= currentActive === 'symptom-search' ? 'active' : '' %>">بحث بالحالة</a>
       <a href="/drug-lookup" class="<%= currentActive === 'drug-lookup' ? 'active' : '' %>">دليل الأدوية</a>
       <% if (typeof role !== 'undefined' && role === 'admin') { %>
         <a href="/suppliers" class="<%= currentActive === 'suppliers' ? 'active' : '' %>">الموردين</a>
         <a href="/coupons" class="<%= currentActive === 'coupons' ? 'active' : '' %>">الكوبونات</a>
         <a href="/reports" class="<%= currentActive === 'reports' ? 'active' : '' %>">التقارير</a>
+        <a href="/insights" class="<%= currentActive === 'insights' ? 'active' : '' %>">التحليلات الذكية</a>
         <a href="/settings" class="<%= currentActive === 'settings' ? 'active' : '' %>">الإعدادات</a>
         <a href="/activity-log" class="<%= currentActive === 'activity-log' ? 'active' : '' %>">سجل النشاطات</a>
         <a href="/payroll" class="<%= currentActive === 'payroll' ? 'active' : '' %>">الموظفين والرواتب</a>

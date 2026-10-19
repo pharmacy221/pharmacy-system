@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>التحليلات الذكية - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'insights' %>
+  <%- include('partials/nav') %>
+  <% const n0 = (v) => Math.round(Number(v) || 0).toLocaleString('en-US');
+     const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+     const clsPill = { A: 'ok', B: 'warn', C: '' }; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>🧠 التحليلات الذكية</h1>
+        <p>فين الفلوس واقفة، إيه اللي بيجيب الربح، وإمتى الزحمة — آخر <%= days %> يوم</p>
+      </div>
+    </div>
+    <div class="tabs no-print">
+      <% [30, 90, 180, 365].forEach(d => { %><a class="<%= days === d ? 'on' : '' %>" href="?days=<%= d %>"><%= d %> يوم</a><% }) %>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi"><div class="k-label">قيمة المخزون (بالتكلفة)</div><div class="k-value"><%= n0(kpi.stock_value) %></div><div class="k-sub">ج.م</div></div>
+      <div class="kpi warn"><div class="k-label">يقرب انتهاؤه (90 يوم)</div><div class="k-value"><%= n0(kpi.expiring_value) %></div><div class="k-sub">ج.م بالتكلفة</div></div>
+      <div class="kpi <%= Number(kpi.expired_value) > 0 ? 'bad' : '' %>"><div class="k-label">منتهي الصلاحية بالمخزون</div><div class="k-value"><%= n0(kpi.expired_value) %></div><div class="k-sub">ج.م خسارة محتملة</div></div>
+      <div class="kpi"><div class="k-label">مستحق عند العملاء</div><div class="k-value"><%= n0(kpi.receivables) %></div><div class="k-sub">ج.م</div></div>
+      <div class="kpi"><div class="k-label">مستحق للموردين</div><div class="k-value"><%= n0(kpi.payables) %></div><div class="k-sub">ج.م</div></div>
+    </div>
+
+    <div class="card">
+      <h2>🔥 أوقات الزحمة (عدد الفواتير)</h2>
+      <% if (maxCell === 0) { %><div class="empty-state">مفيش مبيعات في الفترة دي</div><% } else { %>
+        <div class="heat-scroll"><div class="heat">
+          <div></div>
+          <% for (let h = 0; h < 24; h++) { %><div class="h-hour"><%= h %></div><% } %>
+          <% grid.forEach((row, d) => { %>
+            <div class="h-day"><%= dayNames[d] %></div>
+            <% row.forEach((v, h) => { %>
+              <div class="h-cell" title="<%= dayNames[d] %> الساعة <%= h %>: <%= v %> فاتورة" style="opacity: <%= v === 0 ? 0.06 : (0.2 + 0.8 * v / maxCell).toFixed(2) %>"></div>
+            <% }) %>
+          <% }) %>
+        </div></div>
+        <div class="muted" style="font-size:12px; margin-top:8px;">كل مربع = ساعة، وكل ما كان أغمق كل ما كانت الزحمة أكتر. استخدمها في تحديد مواعيد الورديات.</div>
+      <% } %>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>🏆 تحليل ABC — الأصناف اللي بتجيب الربح</h2>
+        <% if (abc.length === 0) { %><div class="empty-state">مفيش بيانات كفاية</div><% } else { %>
+          <p class="muted" style="font-size:13px; margin-top:-6px;">
+            <strong class="pos-num"><%= abcCount.A %></strong> صنف (A) بيجيبوا 70% من الربح، من إجمالي <%= abcTotal %> صنف رابح. إجمالي الربح التقريبي <%= n0(totalProfit) %> ج.م.
+          </p>
+          <table>
+            <thead><tr><th>#</th><th>الصنف</th><th>الربح</th><th>تراكمي</th><th>فئة</th></tr></thead>
+            <tbody>
+              <% abc.forEach((r, i) => { %>
+                <tr>
+                  <td class="mono muted" data-label="#"><%= i + 1 %></td>
+                  <td data-label="الصنف"><%= r.name %><br><small class="muted"><%= r.units %> وحدة</small></td>
+                  <td class="mono" data-label="الربح"><%= n0(r.profit) %></td>
+                  <td data-label="تراكمي"><div class="bar-mini"><span style="width:<%= Math.round(r.cumShare * 100) %>%"></span></div></td>
+                  <td data-label="فئة"><span class="pill <%= clsPill[r.cls] %>"><%= r.cls %></span></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>هامش الربح حسب القسم</h2>
+          <% if (cats.length === 0) { %><div class="empty-state">لا بيانات</div><% } else { %>
+            <table>
+              <thead><tr><th>القسم</th><th>المبيعات</th><th>الربح</th><th>الهامش</th></tr></thead>
+              <tbody>
+                <% cats.forEach(c => { %>
+                  <tr><td data-label="القسم"><%= c.category %></td><td class="mono" data-label="المبيعات"><%= n0(c.net) %></td>
+                    <td class="mono" data-label="الربح"><%= n0(c.profit) %></td>
+                    <td class="mono <%= Number(c.margin) < 10 ? 'warn-num' : 'pos-num' %>" data-label="الهامش"><%= Number(c.margin).toFixed(1) %>%</td></tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } %>
+        </div>
+
+        <div class="card">
+          <h2>⭐ أفضل العملاء</h2>
+          <% if (customers.length === 0) { %><div class="empty-state">اكتب تليفون العميل في الكاشير وهيظهروا هنا</div><% } else { %>
+            <table>
+              <tbody>
+                <% customers.forEach(c => { %>
+                  <tr><td data-label="العميل"><a href="/customers/<%= c.id %>" style="color:var(--accent);"><%= c.name %></a></td>
+                    <td class="mono muted" data-label="زيارات"><%= c.visits %> زيارة</td><td class="mono" data-label="الإنفاق"><%= n0(c.spent) %></td></tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>⏳ تشغيلات معرّضة للانتهاء قبل بيعها</h2>
+        <p class="muted" style="font-size:13px; margin-top:-6px;">محسوبة من سرعة بيعك في آخر 30 يوم: الكمية اللي مش هتلحق تتباع قبل الانتهاء.</p>
+        <% if (expiry.length === 0) { %><div class="empty-state">مفيش تشغيلات قريبة الانتهاء 👌</div><% } else { %>
+          <table>
+            <thead><tr><th>الصنف</th><th>ينتهي</th><th>الكمية</th><th>معرّض</th><th>قيمته</th></tr></thead>
+            <tbody>
+              <% expiry.forEach(e => { %>
+                <tr>
+                  <td data-label="الصنف"><%= e.name %><% if (e.batch_number) { %><br><small class="muted mono"><%= e.batch_number %></small><% } %></td>
+                  <td data-label="ينتهي"><span class="pill <%= e.days_left <= 30 ? 'bad' : 'warn' %>"><%= e.days_left %> يوم</span></td>
+                  <td class="mono" data-label="الكمية"><%= e.quantity_units %></td>
+                  <td class="mono <%= e.at_risk_units > 0 ? 'neg-num' : 'muted' %>" data-label="معرّض"><%= e.at_risk_units %></td>
+                  <td class="mono" data-label="قيمته"><%= n0(e.at_risk_value) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+          <div class="muted" style="font-size:12px; margin-top:8px;">الحل: عرض/خصم على المعرّض، أو مرتجع للمورد قبل الانتهاء.</div>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>🧊 مخزون راكد (مفيش بيع من 90 يوم)</h2>
+        <% if (dead.length === 0) { %><div class="empty-state">مفيش مخزون راكد 👌</div><% } else { %>
+          <table>
+            <thead><tr><th>الصنف</th><th>الكمية</th><th>القيمة</th><th>آخر بيع</th></tr></thead>
+            <tbody>
+              <% dead.forEach(d => { %>
+                <tr><td data-label="الصنف"><%= d.name %></td><td class="mono" data-label="الكمية"><%= d.stock_units %></td>
+                  <td class="mono warn-num" data-label="القيمة"><%= n0(d.value) %></td><td class="muted" data-label="آخر بيع"><%= d.last_sale || 'ما اتباعش' %></td></tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

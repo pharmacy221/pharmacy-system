@@ -7,6 +7,7 @@ const { requireLogin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
 const { saleLevels } = require('../lib/drug-form');
 const { BusinessError, isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
+const { digitsOf } = require('../lib/phone');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -141,11 +142,59 @@ router.get('/coupon-check', async (req, res, next) => {
   }
 });
 
+// بيانات صرف الأدوية الخاضعة للرقابة (اسم المريض + رقم قومي/جواز + رقم الروشتة، واسم الدكتور اختياري)
+function validateControlled(c) {
+  const o = c && typeof c === 'object' ? c : {};
+  const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+  const patient_name = clean(o.patient_name, 120);
+  const national_id = clean(o.national_id, 20).replace(/\s+/g, '');
+  const prescription_no = clean(o.prescription_no, 60);
+  const doctor_name = clean(o.doctor_name, 120) || null;
+  if (patient_name.length < 3) throw new BusinessError('الصنف خاضع للرقابة: اسم المريض مطلوب');
+  if (!/^\d{14}$/.test(national_id) && !/^[A-Za-z0-9]{6,20}$/.test(national_id)) {
+    throw new BusinessError('الصنف خاضع للرقابة: اكتب الرقم القومي (14 رقم) أو رقم جواز السفر');
+  }
+  if (!prescription_no) throw new BusinessError('الصنف خاضع للرقابة: رقم الروشتة مطلوب');
+  return { patient_name, national_id, prescription_no, doctor_name };
+}
+
+// تحديد العميل داخل نفس الـ transaction: id صريح، أو تليفون (يتلاقي أو يتسجّل تلقائيًا)، أو بدون عميل
+async function resolveCustomer(client, rawId, rawName, rawPhone, userId) {
+  const name = rawName && String(rawName).trim() ? String(rawName).trim().slice(0, 120) : null;
+  const phone = rawPhone && String(rawPhone).trim() ? String(rawPhone).trim().slice(0, 30) : null;
+  const id = parseInt(rawId, 10);
+  if (Number.isInteger(id) && id > 0) {
+    const r = await client.query('SELECT id, name, phone, is_active FROM customers WHERE id = $1', [id]);
+    const c = r.rows[0];
+    if (!c || !c.is_active) throw new BusinessError('العميل غير موجود أو موقوف');
+    return { id: c.id, name: name || c.name, phone: phone || c.phone };
+  }
+  const digits = digitsOf(phone);
+  if (digits.length >= 7) {
+    let r = await client.query(`SELECT id, name, phone, is_active FROM customers WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [digits]);
+    if (!r.rows[0]) {
+      r = await client.query(
+        `INSERT INTO customers (name, phone, created_by) VALUES ($1, $2, $3)
+         ON CONFLICT ((regexp_replace(phone, '\\D', '', 'g'))) WHERE phone IS NOT NULL AND regexp_replace(phone, '\\D', '', 'g') <> '' DO NOTHING
+         RETURNING id, name, phone, is_active`,
+        [name || 'عميل ' + phone, phone, userId]
+      );
+      if (!r.rows[0]) r = await client.query(`SELECT id, name, phone, is_active FROM customers WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [digits]);
+    }
+    const c = r.rows[0];
+    if (!c.is_active) throw new BusinessError('العميل ده موقوف');
+    return { id: c.id, name: name || c.name, phone: c.phone };
+  }
+  return { id: null, name, phone };
+}
+
 // تسجيل عملية بيع وخصم المخزون (FEFO من التشغيلات الصالحة فقط).
 // خصم المخزون والتحويل بين الوحدات بيتم جوه الـ DB triggers (migration_002) في نفس الـ transaction،
 // وإجمالي الفاتورة والخصم بيتحسبوا في قاعدة البيانات من البنود (finalize_sale_invoice).
 router.post('/checkout', async (req, res) => {
   const { items, customer_name, customer_phone, payment_method, discount_amount, coupon_code, notes } = req.body;
+  const wantsCredit = req.body.credit === true || req.body.credit === 'true';
+  const paidNow = Math.max(parseFloat(req.body.paid_now) || 0, 0);
   const idemKey = cleanKey(req.body.idempotency_key || req.get('Idempotency-Key'));
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -207,18 +256,32 @@ router.post('/checkout', async (req, res) => {
     const medResult = await client.query('SELECT * FROM medicines WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE', [ids]);
     const medicines = new Map(medResult.rows.map((m) => [m.id, m]));
 
+    // العميل: اختيار من القائمة، أو بالتليفون (بيتلاقي أو بيتسجّل تلقائيًا). الاسم لوحده بيفضل على الفاتورة بس.
+    const cust = await resolveCustomer(client, req.body.customer_id, customer_name, customer_phone, userId);
+    if (wantsCredit && !cust.id) {
+      throw new BusinessError('البيع الآجل محتاج عميل: اختار عميل من القائمة أو اكتب اسمه وتليفونه');
+    }
+
+    // الأدوية الخاضعة للرقابة: لازم بيانات المريض والروشتة (بتتسجّل في السجل الرقابي)
+    const hasControlled = items.some((it) => {
+      const m = medicines.get(parseInt(it.medicine_id, 10));
+      return m && m.controlled_substance;
+    });
+    const controlled = hasControlled ? validateControlled(req.body.controlled) : null;
+
     // إنشاء رأس الفاتورة (الخصم والإجمالي النهائيين بيتحسبوا في finalize_sale_invoice بعد إدخال البنود)
     const invoiceResult = await client.query(
-      `INSERT INTO sale_invoices (customer_name, customer_phone, discount, payment_method, notes, created_by, shift_id, idempotency_key)
-       VALUES ($1, $2, 0, $3, $4, $5, $6, $7) RETURNING id`,
+      `INSERT INTO sale_invoices (customer_name, customer_phone, discount, payment_method, notes, created_by, shift_id, idempotency_key, customer_id)
+       VALUES ($1, $2, 0, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
-        customer_name && customer_name.trim() ? customer_name.trim() : null,
-        customer_phone && customer_phone.trim() ? customer_phone.trim() : null,
+        cust.name,
+        cust.phone,
         ['cash', 'card', 'other'].includes(payment_method) ? payment_method : 'cash',
         notes || null,
         userId,
         shiftId,
-        idemKey
+        idemKey,
+        cust.id
       ]
     );
     const invoiceId = invoiceResult.rows[0].id;
@@ -266,8 +329,24 @@ router.post('/checkout', async (req, res) => {
     }
     const totalDiscount = Math.min(manualDiscount + couponAmount, subtotal);
 
-    const finalized = await client.query('SELECT finalize_sale_invoice($1, $2, $3) AS total', [invoiceId, totalDiscount, userId]);
+    // الجزء الآجل = الصافي − المدفوع دلوقتي (الدالة بتتحقق من حد الآجل وبتسجّله على حساب العميل)
+    const netTotal = Math.round((subtotal - totalDiscount) * 100) / 100;
+    const creditPart = wantsCredit ? Math.max(Math.round((netTotal - paidNow) * 100) / 100, 0) : 0;
+
+    const finalized = await client.query('SELECT finalize_sale_invoice($1, $2, $3, $4) AS total', [invoiceId, totalDiscount, userId, creditPart]);
     const invoiceTotal = Number(finalized.rows[0].total);
+
+    if (controlled) {
+      await client.query(
+        `INSERT INTO controlled_dispensing (invoice_id, sale_item_id, medicine_id, medicine_name, quantity, unit_label, quantity_units,
+                                            patient_name, national_id, prescription_no, doctor_name, dispensed_by)
+         SELECT si.invoice_id, si.id, si.medicine_id, si.medicine_name_snapshot, si.quantity, si.unit_label, si.quantity_units,
+                $2, $3, $4, $5, $6
+         FROM sale_items si JOIN medicines m ON m.id = si.medicine_id
+         WHERE si.invoice_id = $1 AND m.controlled_substance`,
+        [invoiceId, controlled.patient_name, controlled.national_id, controlled.prescription_no, controlled.doctor_name, userId]
+      );
+    }
 
     await client.query('COMMIT');
     began = false;
@@ -276,7 +355,7 @@ router.post('/checkout', async (req, res) => {
       action: 'إتمام عملية بيع',
       entityType: 'sale_invoice',
       entityId: invoiceId,
-      details: { total: invoiceTotal, customer_name: customer_name || null }
+      details: { total: invoiceTotal, customer_name: cust.name || null, ...(creditPart > 0 ? { credit_amount: creditPart } : {}), ...(controlled ? { controlled_dispensing: true } : {}) }
     });
 
     res.json({ ok: true, invoiceId, requiresPrescriptionWarning });
@@ -305,6 +384,9 @@ router.get('/receipt/:invoiceId', async (req, res, next) => {
     if (!invoice) return res.status(404).send('الفاتورة غير موجودة');
 
     const items = await query('SELECT * FROM sale_items WHERE invoice_id = $1 ORDER BY id', [invoice.id]);
+    const creditEntry = invoice.credit_amount > 0
+      ? await queryOne(`SELECT balance_after FROM customer_ledger WHERE invoice_id = $1 AND entry_type = 'credit_sale' ORDER BY id LIMIT 1`, [invoice.id])
+      : null;
     const pharmacyName = await queryOne(`SELECT value FROM settings WHERE key = 'pharmacy_name'`);
     const pharmacyPhone = await queryOne(`SELECT value FROM settings WHERE key = 'pharmacy_phone'`);
     const pharmacyAddress = await queryOne(`SELECT value FROM settings WHERE key = 'pharmacy_address'`);
@@ -312,6 +394,7 @@ router.get('/receipt/:invoiceId', async (req, res, next) => {
     res.render('receipt', {
       invoice,
       items,
+      creditBalance: creditEntry ? creditEntry.balance_after : null,
       shopSettings: {
         name: pharmacyName ? pharmacyName.value : 'الصيدلية',
         phone: pharmacyPhone ? pharmacyPhone.value : null,

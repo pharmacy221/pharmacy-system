@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title><%= customer.name %> - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'customers' %>
+  <%- include('partials/nav') %>
+  <% const fmtDT = (d) => d ? new Date(d).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
+     const typeLabel = { credit_sale: 'بيع آجل', payment: 'سداد', return_credit: 'مرتجع', void_credit: 'إلغاء فاتورة', adjustment: 'تسوية' };
+     const bal = Number(customer.balance); const limit = Number(customer.credit_limit);
+     const usedPct = limit > 0 ? Math.min(100, Math.max(0, bal / limit * 100)) : 0; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1><%= customer.name %> <% if (!customer.is_active) { %><span class="pill">موقوف</span><% } %></h1>
+        <p dir="ltr" style="text-align:right;"><%= customer.phone || 'بدون تليفون' %><% if (customer.address) { %> · <%= customer.address %><% } %></p>
+      </div>
+      <div class="row-actions no-print">
+        <% if (wa) { %><a class="btn btn-wa btn-sm" href="<%= wa %>" target="_blank" rel="noopener">واتساب</a><% } %>
+        <a class="btn-outline" href="/customers/<%= customer.id %>/statement" target="_blank">🖨️ كشف حساب</a>
+        <a class="btn-outline" href="/customers">← كل العملاء</a>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+    <% if (msg) { %><div class="alert alert-success"><%= msg %></div><% } %>
+
+    <div class="kpi-strip">
+      <div class="kpi <%= bal > 0 ? 'bad' : '' %>">
+        <div class="k-label">المديونية الحالية</div>
+        <div class="k-value <%= bal > 0 ? 'neg-num' : (bal < 0 ? 'pos-num' : '') %>"><%= bal < 0 ? 'رصيد له ' + Math.abs(bal).toFixed(2) : bal.toFixed(2) %></div>
+        <div class="k-sub">
+          <% if (limit > 0) { %>حد الآجل <%= limit.toFixed(2) %> — متاح <%= Math.max(0, limit - bal).toFixed(2) %>
+            <div class="bar-mini <%= usedPct > 85 ? 'bad' : (usedPct > 60 ? 'warn' : '') %>" style="margin-top:6px;"><span style="width:<%= usedPct %>%"></span></div>
+          <% } else { %>الآجل غير مسموح<% } %>
+        </div>
+      </div>
+      <div class="kpi"><div class="k-label">إجمالي المشتريات</div><div class="k-value"><%= Number(stats.spent).toFixed(2) %></div><div class="k-sub"><%= stats.visits %> زيارة</div></div>
+      <div class="kpi"><div class="k-label">آخر زيارة</div><div class="k-value" style="font-size:16px;"><%= stats.last_visit || '—' %></div></div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="card">
+          <h2>دفتر الحساب</h2>
+          <% if (ledger.length === 0) { %>
+            <div class="empty-state">مفيش حركات على الحساب لسه</div>
+          <% } else { %>
+            <table>
+              <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الرصيد بعدها</th><th>تفاصيل</th></tr></thead>
+              <tbody>
+                <% ledger.forEach(l => { const a = Number(l.amount); %>
+                  <tr>
+                    <td class="muted" data-label="التاريخ"><%= fmtDT(l.created_at) %></td>
+                    <td data-label="النوع"><span class="pill <%= a > 0 ? 'warn' : 'ok' %>"><%= typeLabel[l.entry_type] || l.entry_type %></span></td>
+                    <td class="mono <%= a > 0 ? 'neg-num' : 'pos-num' %>" data-label="المبلغ"><%= a > 0 ? '+' : '' %><%= a.toFixed(2) %></td>
+                    <td class="mono" data-label="الرصيد بعدها"><%= Number(l.balance_after).toFixed(2) %></td>
+                    <td class="muted" data-label="تفاصيل">
+                      <% if (l.invoice_id) { %><a href="/sales/<%= l.invoice_id %>" style="color:var(--accent);">فاتورة #<%= l.invoice_id %></a> <% } %>
+                      <%= l.note || '' %> <% if (l.username) { %><small>(<%= l.username %>)</small><% } %>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } %>
+        </div>
+
+        <div class="card">
+          <h2>آخر الفواتير</h2>
+          <% if (invoices.length === 0) { %>
+            <div class="empty-state">لسه مفيش فواتير</div>
+          <% } else { %>
+            <table>
+              <thead><tr><th>#</th><th>التاريخ</th><th>الإجمالي</th><th>آجل</th><th>الحالة</th></tr></thead>
+              <tbody>
+                <% invoices.forEach(i => { %>
+                  <tr>
+                    <td class="mono" data-label="#"><a href="/sales/<%= i.id %>" style="color:var(--accent);"><%= i.id %></a></td>
+                    <td class="muted" data-label="التاريخ"><%= fmtDT(i.created_at) %></td>
+                    <td class="mono" data-label="الإجمالي"><%= Number(i.total).toFixed(2) %></td>
+                    <td class="mono" data-label="آجل"><%= Number(i.credit_amount) > 0 ? Number(i.credit_amount).toFixed(2) : '—' %></td>
+                    <td data-label="الحالة"><%- i.status === 'voided' ? '<span class="pill bad">ملغاة</span>' : '<span class="pill ok">مكتملة</span>' %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } %>
+        </div>
+      </div>
+
+      <div>
+        <% if (bal > 0) { %>
+          <div class="card">
+            <h2>تسجيل سداد</h2>
+            <form action="/customers/<%= customer.id %>/payment" method="POST" class="no-print">
+              <input type="hidden" name="idempotency_key" value="<%= payKey %>">
+              <div class="field"><label>المبلغ (أقصاه <%= bal.toFixed(2) %>)</label>
+                <input type="number" name="amount" min="0.01" max="<%= bal %>" step="0.01" value="<%= bal.toFixed(2) %>" required></div>
+              <div class="field"><label>طريقة السداد</label>
+                <select name="method"><option value="cash">كاش (يدخل درج الوردية)</option><option value="card">بطاقة</option><option value="other">أخرى</option></select></div>
+              <div class="field"><label>ملاحظة</label><input type="text" name="note" maxlength="200"></div>
+              <% if (!activeShift) { %><div class="muted" style="font-size:12px; margin-bottom:8px;">السداد النقدي محتاج وردية مفتوحة باسمك.</div><% } %>
+              <button class="btn" type="submit">تسجيل السداد</button>
+            </form>
+          </div>
+        <% } %>
+
+        <div class="card">
+          <h2>🔔 الأدوية المزمنة (تذكير الصرف)</h2>
+          <% if (refills.length === 0) { %>
+            <div class="muted" style="margin-bottom:12px; font-size:13px;">مفيش تذكيرات. ضيف دواء مزمن وهنفكّرك بالتجديد قبل ما يخلص.</div>
+          <% } else { %>
+            <table>
+              <tbody>
+                <% refills.forEach(r => { %>
+                  <tr>
+                    <td data-label="الدواء"><strong><%= r.medicine_name %></strong><br><small class="muted">كل <%= r.interval_days %> يوم · آخر صرف <%= r.last_date %></small></td>
+                    <td data-label="الموعد">
+                      <% if (r.days_overdue > 0) { %><span class="pill bad">متأخر <%= r.days_overdue %> يوم</span>
+                      <% } else if (r.days_overdue === 0) { %><span class="pill warn">النهارده</span>
+                      <% } else { %><span class="pill ok">بعد <%= -r.days_overdue %> يوم</span><% } %>
+                    </td>
+                    <td data-label="">
+                      <form class="inline-form no-print" action="/customers/refills/<%= r.id %>/delete" method="POST" onsubmit="return confirm('حذف التذكير؟')">
+                        <input type="hidden" name="customer_id" value="<%= customer.id %>">
+                        <button class="btn-ghost-sm" type="submit">حذف</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } %>
+          <form action="/customers/<%= customer.id %>/refills" method="POST" class="no-print" style="margin-top:12px;">
+            <div class="field"><label>الدواء (اكتب جزء من الاسم)</label>
+              <input type="hidden" name="medicine_id" id="refillMedId" required>
+              <input type="text" id="refillMedQ" placeholder="ابحث عن الصنف..." autocomplete="off">
+              <div id="refillMedResults" style="font-size:13px;"></div>
+            </div>
+            <div class="form-grid">
+              <div class="field"><label>كل كام يوم؟</label><input type="number" name="interval_days" min="5" max="365" value="30" required></div>
+              <div class="field"><label>ملاحظة</label><input type="text" name="notes" maxlength="300"></div>
+            </div>
+            <% if (topMeds.length) { %>
+              <div class="muted" style="font-size:12px; margin-bottom:8px;">اشترى كتير: 
+                <% topMeds.slice(0, 5).forEach(t => { %>
+                  <button type="button" class="refill-chip" data-id="<%= t.medicine_id %>" data-name="<%= t.name %>"><%= t.name %> (<%= t.times %>×)</button>
+                <% }) %>
+              </div>
+            <% } %>
+            <button class="btn btn-sm" type="submit">إضافة تذكير</button>
+          </form>
+        </div>
+
+        <div class="card no-print">
+          <h2>بيانات العميل</h2>
+          <form action="/customers/<%= customer.id %>/update" method="POST">
+            <div class="field"><label>الاسم</label><input type="text" name="name" value="<%= customer.name %>" required maxlength="120"></div>
+            <div class="field"><label>التليفون</label><input type="text" name="phone" value="<%= customer.phone || '' %>" dir="ltr"></div>
+            <div class="field"><label>العنوان</label><input type="text" name="address" value="<%= customer.address || '' %>"></div>
+            <div class="field"><label>ملاحظات</label><textarea name="notes" rows="2" maxlength="500"><%= customer.notes || '' %></textarea></div>
+            <% if (role === 'admin') { %>
+              <div class="field"><label>حد الآجل (ج.م)</label><input type="number" name="credit_limit" value="<%= limit %>" min="0" step="0.01"></div>
+              <label style="display:flex; gap:8px; align-items:center; color:var(--text);"><input type="checkbox" name="is_active" <%= customer.is_active ? 'checked' : '' %> style="width:auto;"> عميل نشط</label>
+            <% } %>
+            <button class="btn btn-sm" type="submit" style="margin-top:10px;">حفظ</button>
+          </form>
+        </div>
+
+        <% if (role === 'admin') { %>
+          <div class="card no-print">
+            <h2>تسوية الرصيد (أدمن)</h2>
+            <p class="muted" style="font-size:12px; margin-top:0;">لتسجيل رصيد افتتاحي من دفتر ورقي أو تصحيح/إعفاء. بتتسجل في الدفتر ومبتأثرش في الخزنة.</p>
+            <form action="/customers/<%= customer.id %>/adjust" method="POST" onsubmit="return confirm('تأكيد قيد التسوية؟')">
+              <div class="form-grid">
+                <div class="field"><label>الاتجاه</label>
+                  <select name="direction"><option value="increase">زيادة المديونية</option><option value="decrease">تخفيض المديونية</option></select></div>
+                <div class="field"><label>المبلغ</label><input type="number" name="amount" min="0.01" step="0.01" required></div>
+              </div>
+              <div class="field"><label>السبب *</label><input type="text" name="reason" required maxlength="200"></div>
+              <button class="btn-outline" type="submit">تسجيل التسوية</button>
+            </form>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const q = document.getElementById('refillMedQ'), box = document.getElementById('refillMedResults'), idEl = document.getElementById('refillMedId');
+      let t = null;
+      function pick(id, name) { idEl.value = id; q.value = name; box.innerHTML = ''; }
+      document.querySelectorAll('.refill-chip').forEach((b) => b.addEventListener('click', () => pick(b.dataset.id, b.dataset.name)));
+      q.addEventListener('input', () => {
+        idEl.value = ''; clearTimeout(t);
+        const v = q.value.trim(); if (v.length < 2) { box.innerHTML = ''; return; }
+        t = setTimeout(async () => {
+          try {
+            const r = await fetch('/pos/search?q=' + encodeURIComponent(v)); const d = await r.json();
+            box.innerHTML = '';
+            (d.results || []).slice(0, 6).forEach((m) => {
+              const a = document.createElement('button'); a.type = 'button'; a.className = 'btn-ghost-sm'; a.style.cssText = 'margin:3px 3px 0 0;';
+              a.textContent = m.name; a.addEventListener('click', () => pick(m.id, m.name)); box.appendChild(a);
+            });
+          } catch (e) { /* تجاهل */ }
+        }, 250);
+      });
+      q.form.addEventListener('submit', (e) => { if (!idEl.value) { e.preventDefault(); alert('اختار الصنف من النتايج الأول'); } });
+    })();
+  </script>
+</body>
+</html>

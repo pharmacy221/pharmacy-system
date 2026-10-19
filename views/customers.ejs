@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>العملاء - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'customers' %>
+  <%- include('partials/nav') %>
+  <% const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'short', year: 'numeric' }) : '—'; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>العملاء</h1>
+        <p>ملف كل عميل: مشترياته، حسابه الآجل، وتذكيرات تجديد أدويته المزمنة</p>
+      </div>
+      <a href="/customers/refills" class="btn">🔔 تذكيرات الصرف<% if (dueCount > 0) { %> (<%= dueCount %>)<% } %></a>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+    <% if (msg) { %><div class="alert alert-success"><%= msg %></div><% } %>
+
+    <div class="kpi-strip">
+      <div class="kpi"><div class="k-label">عدد العملاء</div><div class="k-value"><%= stats.customers %></div></div>
+      <div class="kpi <%= stats.debtors ? 'warn' : '' %>"><div class="k-label">عملاء عليهم مديونية</div><div class="k-value"><%= stats.debtors %></div></div>
+      <div class="kpi <%= Number(stats.total_debt) > 0 ? 'bad' : '' %>"><div class="k-label">إجمالي المستحق للصيدلية</div><div class="k-value"><%= Number(stats.total_debt).toFixed(2) %></div><div class="k-sub">ج.م</div></div>
+      <div class="kpi <%= dueCount ? 'warn' : '' %>"><div class="k-label">تذكيرات مستحقة الآن</div><div class="k-value"><%= dueCount %></div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <form class="toolbar" method="GET" action="/customers">
+          <div class="field" style="flex:1; min-width:200px;">
+            <label>بحث بالاسم أو التليفون</label>
+            <input type="text" name="q" value="<%= q %>" placeholder="مثال: أحمد أو 0100...">
+          </div>
+          <div class="field">
+            <label>عرض</label>
+            <select name="filter" onchange="this.form.submit()">
+              <option value="" <%= !filter ? 'selected' : '' %>>الكل</option>
+              <option value="debt" <%= filter === 'debt' ? 'selected' : '' %>>عليهم مديونية</option>
+              <option value="inactive" <%= filter === 'inactive' ? 'selected' : '' %>>الموقوفين</option>
+            </select>
+          </div>
+          <button class="btn" type="submit">بحث</button>
+        </form>
+
+        <% if (customers.length === 0) { %>
+          <div class="empty-state">مفيش عملاء بالشكل ده. العميل بيتسجّل تلقائي أول ما تكتب تليفونه في الكاشير، أو ضيفه من النموذج.</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><th>العميل</th><th>التليفون</th><th>آخر زيارة</th><th>الزيارات</th><th>المديونية</th></tr>
+            </thead>
+            <tbody>
+              <% customers.forEach(c => { %>
+                <tr>
+                  <td data-label="العميل"><a href="/customers/<%= c.id %>" style="font-weight:700; color:var(--accent);"><%= c.name %></a>
+                    <% if (!c.is_active) { %><span class="pill">موقوف</span><% } %></td>
+                  <td class="mono" data-label="التليفون" dir="ltr" style="text-align:right;"><%= c.phone || '—' %></td>
+                  <td class="muted" data-label="آخر زيارة"><%= fmtDate(c.last_visit) %></td>
+                  <td class="mono" data-label="الزيارات"><%= c.visits %></td>
+                  <td class="mono" data-label="المديونية">
+                    <% if (Number(c.balance) > 0) { %><span class="neg-num"><%= Number(c.balance).toFixed(2) %></span>
+                    <% } else if (Number(c.balance) < 0) { %><span class="pos-num">له <%= Math.abs(Number(c.balance)).toFixed(2) %></span>
+                    <% } else { %><span class="muted">—</span><% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>إضافة عميل</h2>
+        <form action="/customers" method="POST">
+          <div class="field"><label>الاسم *</label><input type="text" name="name" required maxlength="120"></div>
+          <div class="field"><label>التليفون (واتساب)</label><input type="text" name="phone" placeholder="01xxxxxxxxx" dir="ltr"></div>
+          <div class="field"><label>العنوان</label><input type="text" name="address" maxlength="200"></div>
+          <% if (role === 'admin') { %>
+            <div class="field"><label>حد الآجل (ج.م) — صفر = بيع نقدي فقط</label><input type="number" name="credit_limit" value="0" min="0" step="0.01"></div>
+          <% } %>
+          <div class="field"><label>ملاحظات</label><textarea name="notes" rows="2" maxlength="500"></textarea></div>
+          <button class="btn" type="submit">حفظ العميل</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

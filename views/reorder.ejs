@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>النواقص الذكية - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'reorder' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>🛒 النواقص الذكية</h1>
+        <p>اقتراح الطلبية من سرعة بيع كل صنف — مش من حد أدنى ثابت. الأصناف اللي ما بتتباعش مبتظهرش.</p>
+      </div>
+    </div>
+
+    <form class="toolbar no-print" method="GET">
+      <div class="field"><label>سرعة البيع محسوبة من آخر (يوم)</label><input type="number" name="window" value="<%= windowDays %>" min="7" max="180"></div>
+      <div class="field"><label>مدة التوريد المتوقعة (يوم)</label><input type="number" name="lead" value="<%= leadDays %>" min="1" max="60"></div>
+      <div class="field"><label>أغطّي كام يوم؟</label><input type="number" name="cover" value="<%= coverDays %>" min="3" max="180"></div>
+      <button class="btn" type="submit">تحديث</button>
+    </form>
+
+    <div class="kpi-strip">
+      <div class="kpi"><div class="k-label">أصناف محتاجة طلب</div><div class="k-value"><%= totalLines %></div></div>
+      <div class="kpi <%= urgentLines ? 'bad' : '' %>"><div class="k-label">عاجل (هيخلص خلال أيام)</div><div class="k-value"><%= urgentLines %></div></div>
+      <div class="kpi"><div class="k-label">التكلفة التقديرية</div><div class="k-value"><%= estTotal.toFixed(2) %></div><div class="k-sub">ج.م بآخر سعر شراء</div></div>
+    </div>
+
+    <% if (groups.length === 0) { %>
+      <div class="card"><div class="empty-state">المخزون كويس 👌 مفيش حاجة محتاجة طلب بالمعايير دي.</div></div>
+    <% } %>
+
+    <% groups.forEach((g, gi) => { %>
+      <section class="group-card" data-supplier="<%= g.supplierName %>" data-wa="<%= g.wa || '' %>">
+        <header>
+          <div>
+            <h3>🚚 <%= g.supplierName %></h3>
+            <small class="muted"><%= g.items.length %> صنف · تقدير <%= g.estCost.toFixed(2) %> ج.م</small>
+          </div>
+          <div class="row-actions no-print">
+            <button type="button" class="btn-outline js-copy">نسخ الطلبية</button>
+            <% if (g.wa) { %><button type="button" class="btn btn-wa btn-sm js-wa">إرسال واتساب</button><% } %>
+            <% if (g.supplierId) { %><a class="btn btn-sm" href="/purchases/new?supplier=<%= g.supplierId %>">تسجيل فاتورة شراء</a><% } %>
+            <button type="button" class="btn-outline" onclick="window.print()">🖨️</button>
+          </div>
+        </header>
+        <div class="body">
+          <table>
+            <thead><tr><th class="no-print"></th><th>الصنف</th><th>المتاح</th><th>بيع/يوم</th><th>يكفي</th><th>الكمية (علب)</th><th>سعر العلبة</th></tr></thead>
+            <tbody>
+              <% g.items.forEach(i => { %>
+                <tr data-name="<%= i.name %>">
+                  <td class="no-print" data-label=""><input type="checkbox" class="js-sel" checked style="width:auto;"></td>
+                  <td data-label="الصنف"><strong><%= i.name %></strong>
+                    <% if (i.urgent) { %> <span class="pill bad">عاجل</span><% } %>
+                    <% if (i.expired > 0) { %> <span class="pill warn" title="كمية منتهية مش محسوبة في المتاح"><%= i.expired %> منتهي</span><% } %></td>
+                  <td class="mono" data-label="المتاح"><%= i.sellable %></td>
+                  <td class="mono" data-label="بيع/يوم"><%= i.velocity.toFixed(1) %></td>
+                  <td class="mono" data-label="يكفي">
+                    <% const d = Math.floor(i.daysCover); %>
+                    <span class="<%= d <= 2 ? 'neg-num' : (d <= leadDays ? 'warn-num' : '') %>"><%= d === 0 ? 'خلص/أقل من يوم' : d + ' يوم' %></span>
+                  </td>
+                  <td data-label="الكمية (علب)"><input class="qty-input js-qty" type="number" min="1" value="<%= i.boxes %>"></td>
+                  <td class="mono muted" data-label="سعر العلبة"><%= i.boxCost > 0 ? i.boxCost.toFixed(2) : '—' %><% if (i.unitsPerBox > 1) { %><br><small>(<%= i.unitsPerBox %> وحدة/علبة)</small><% } %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% }) %>
+  </div>
+
+  <script>
+    function buildText(section) {
+      const lines = [];
+      section.querySelectorAll('tbody tr').forEach((tr) => {
+        if (!tr.querySelector('.js-sel').checked) return;
+        const q = parseInt(tr.querySelector('.js-qty').value, 10) || 0;
+        if (q > 0) lines.push('• ' + tr.dataset.name + ' — ' + q + ' علبة');
+      });
+      if (!lines.length) return '';
+      return 'طلبية من الصيدلية — ' + section.dataset.supplier + '\n' + lines.join('\n') + '\nشكراً 🙏';
+    }
+    document.querySelectorAll('.group-card').forEach((sec) => {
+      const copy = sec.querySelector('.js-copy'), wa = sec.querySelector('.js-wa');
+      copy.addEventListener('click', async () => {
+        const t = buildText(sec); if (!t) return alert('مفيش أصناف مختارة');
+        try { await navigator.clipboard.writeText(t); copy.textContent = 'اتنسخت ✓'; setTimeout(() => (copy.textContent = 'نسخ الطلبية'), 1500); }
+        catch (e) { prompt('انسخ الطلبية:', t); }
+      });
+      if (wa) wa.addEventListener('click', () => {
+        const t = buildText(sec); if (!t) return alert('مفيش أصناف مختارة');
+        window.open('https://wa.me/' + sec.dataset.wa + '?text=' + encodeURIComponent(t), '_blank', 'noopener');
+      });
+    });
+  </script>
+</body>
+</html>

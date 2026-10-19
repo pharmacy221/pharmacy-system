@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الجرد - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'stocktake' %>
+  <%- include('partials/nav') %>
+  <% const stLabel = { open: ['مفتوح', 'warn'], applied: ['معتمد', 'ok'], cancelled: ['ملغي', ''] }; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>📋 الجرد</h1>
+        <p>عدّ فعلي بالباركود أو يدوي، مراجعة الفروق بالقيمة، واعتماد يضبط المخزون بسجل تسوية كامل</p>
+      </div>
+    </div>
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>جلسات الجرد</h2>
+        <% if (stocktakes.length === 0) { %>
+          <div class="empty-state">لسه معملتش جرد. ابدأ من النموذج على الجنب.</div>
+        <% } else { %>
+          <table>
+            <thead><tr><th>#</th><th>الاسم</th><th>التقدم</th><th>الحالة</th><th>التاريخ</th></tr></thead>
+            <tbody>
+              <% stocktakes.forEach(s => { const pct = s.items ? Math.round(s.counted / s.items * 100) : 0; %>
+                <tr>
+                  <td class="mono" data-label="#"><%= s.id %></td>
+                  <td data-label="الاسم"><a href="/stocktake/<%= s.id %>" style="color:var(--accent); font-weight:700;"><%= s.name %></a>
+                    <% if (s.category) { %><br><small class="muted">قسم: <%= s.category %></small><% } %></td>
+                  <td data-label="التقدم"><div class="bar-mini"><span style="width:<%= pct %>%"></span></div><small class="muted"><%= s.counted %> / <%= s.items %></small></td>
+                  <td data-label="الحالة"><span class="pill <%= stLabel[s.status][1] %>"><%= stLabel[s.status][0] %></span></td>
+                  <td class="muted" data-label="التاريخ"><%= new Date(s.created_at).toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo' }) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+
+      <div class="card">
+        <h2>بدء جرد جديد</h2>
+        <form action="/stocktake" method="POST">
+          <div class="field"><label>اسم الجرد</label><input type="text" name="name" placeholder="جرد أكتوبر" maxlength="100"></div>
+          <div class="field"><label>القسم</label>
+            <select name="category"><option value="">كل الأصناف الفعّالة</option>
+              <% categories.forEach(c => { %><option value="<%= c.category %>"><%= c.category %> (<%= c.n %>)</option><% }) %>
+            </select></div>
+          <p class="muted" style="font-size:12px;">بنثبّت لقطة بالمخزون الحالي. الأفضل تجرد قسم قسم، ومن غير بيع على القسم وقت العد.</p>
+          <button class="btn" type="submit">ابدأ الجرد</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

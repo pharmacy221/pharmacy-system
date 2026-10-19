@@ -55,6 +55,18 @@
           <span><%= invoice.customer_name %></span>
         </div>
         <% } %>
+        <% if (invoice.customer_id) { %>
+        <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span>ملف العميل</span>
+          <a href="/customers/<%= invoice.customer_id %>" style="color:var(--accent);">فتح ←</a>
+        </div>
+        <% } %>
+        <% if (Number(invoice.credit_amount) > 0) { %>
+        <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span>آجل على العميل</span>
+          <span class="mono warn-num"><%= Number(invoice.credit_amount).toFixed(2) %><% if (Number(invoice.credit_reversed) > 0) { %> (اتخصم منه <%= Number(invoice.credit_reversed).toFixed(2) %>)<% } %></span>
+        </div>
+        <% } %>
         <% if (invoice.customer_phone) { %>
         <div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom:8px;">
           <span>تليفون العميل</span>

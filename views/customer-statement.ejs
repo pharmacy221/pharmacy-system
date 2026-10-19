@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>كشف حساب - <%= customer.name %></title>
+  <%- include('partials/head') %>
+  <style>
+    body { background: #fff !important; color: #111 !important; }
+    .sheet { max-width: 800px; margin: 24px auto; padding: 0 20px; font-family: var(--sans); }
+    .sheet h1 { margin: 0 0 4px; font-size: 22px; }
+    .sheet .meta { color: #555; font-size: 13px; margin-bottom: 18px; }
+    .sheet table { border: 1px solid #bbb; }
+    .sheet th, .sheet td { border: 1px solid #ccc; padding: 7px 9px; color: #111; }
+    .sheet th { background: #f1f1f1; }
+    .total { margin-top: 16px; font-size: 18px; font-weight: 700; text-align: left; }
+    .actions { margin: 18px 0; display: flex; gap: 10px; }
+    @media print { .actions { display: none; } }
+  </style>
+</head>
+<body>
+  <% const typeLabel = { credit_sale: 'بيع آجل', payment: 'سداد', return_credit: 'مرتجع', void_credit: 'إلغاء فاتورة', adjustment: 'تسوية' }; %>
+  <div class="sheet">
+    <h1>كشف حساب عميل</h1>
+    <div class="meta">
+      <%= shopTitle %> · العميل: <strong><%= customer.name %></strong>
+      <% if (customer.phone) { %> · <span dir="ltr"><%= customer.phone %></span><% } %>
+      · صدر في <%= new Date().toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'long', year: 'numeric' }) %>
+    </div>
+    <table>
+      <thead><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (سدّد)</th><th>الرصيد</th></tr></thead>
+      <tbody>
+        <% ledger.forEach(l => { const a = Number(l.amount); %>
+          <tr>
+            <td><%= new Date(l.created_at).toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo' }) %></td>
+            <td><%= typeLabel[l.entry_type] || l.entry_type %><% if (l.invoice_id) { %> — فاتورة #<%= l.invoice_id %><% } %><% if (l.note) { %> (<%= l.note %>)<% } %></td>
+            <td class="mono"><%= a > 0 ? a.toFixed(2) : '' %></td>
+            <td class="mono"><%= a < 0 ? Math.abs(a).toFixed(2) : '' %></td>
+            <td class="mono"><%= Number(l.balance_after).toFixed(2) %></td>
+          </tr>
+        <% }) %>
+        <% if (ledger.length === 0) { %><tr><td colspan="5" style="text-align:center;">لا توجد حركات</td></tr><% } %>
+      </tbody>
+    </table>
+    <div class="total">الرصيد الحالي: <%= Number(customer.balance).toFixed(2) %> ج.م <%= Number(customer.balance) < 0 ? '(رصيد دائن للعميل)' : '' %></div>
+    <div class="actions"><button class="btn" onclick="window.print()">🖨️ طباعة</button><a class="btn-outline" href="/customers/<%= customer.id %>">رجوع</a></div>
+  </div>
+</body>
+</html>

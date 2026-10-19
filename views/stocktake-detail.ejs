@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>جرد #<%= st.id %> - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'stocktake' %>
+  <%- include('partials/nav') %>
+  <% const isOpen = st.status === 'open'; const pct = totals.items ? Math.round(totals.counted / totals.items * 100) : 0; %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1><%= st.name %> <span class="pill <%= isOpen ? 'warn' : (st.status === 'applied' ? 'ok' : '') %>"><%= isOpen ? 'مفتوح' : (st.status === 'applied' ? 'معتمد' : 'ملغي') %></span></h1>
+        <p><%= st.category ? 'قسم: ' + st.category + ' · ' : '' %>بدأه <%= st.created_by_name || '—' %></p>
+      </div>
+      <a href="/stocktake" class="btn-outline no-print">← الجرد</a>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+    <% if (result) { %>
+      <div class="alert alert-success">تم الاعتماد: تسوية <%= result.applied %> صنف، بدون تغيير <%= result.unchanged %>، فشل <%= result.failed %>، لم يُعد <%= result.uncounted %>. زيادة بقيمة <%= result.gain_value %> ج.م، عجز بقيمة <%= result.loss_value %> ج.م.</div>
+    <% } %>
+
+    <div class="kpi-strip">
+      <div class="kpi"><div class="k-label">التقدم</div><div class="k-value"><%= pct %>%</div><div class="k-sub"><%= totals.counted %> من <%= totals.items %> صنف</div></div>
+      <div class="kpi <%= totals.variances ? 'warn' : '' %>"><div class="k-label">أصناف فيها فرق</div><div class="k-value"><%= totals.variances %></div></div>
+      <div class="kpi bad"><div class="k-label">قيمة العجز (بالتكلفة)</div><div class="k-value"><%= Number(totals.loss_value).toFixed(2) %></div></div>
+      <div class="kpi"><div class="k-label">قيمة الزيادة (بالتكلفة)</div><div class="k-value"><%= Number(totals.gain_value).toFixed(2) %></div></div>
+    </div>
+
+    <% if (isOpen) { %>
+      <div class="scan-banner no-print">
+        <strong>📷 مسح الباركود</strong>
+        <input type="text" id="scanInput" placeholder="امسح الباركود هنا (كل مسحة = +1)" autocomplete="off" dir="ltr">
+        <span class="scan-flash" id="scanFlash"></span>
+      </div>
+    <% } %>
+
+    <div class="card">
+      <form class="toolbar no-print" method="GET">
+        <input type="hidden" name="view" value="<%= view %>">
+        <div class="field" style="flex:1; min-width:180px;"><label>بحث</label><input type="text" name="q" value="<%= q %>" placeholder="اسم أو باركود"></div>
+        <button class="btn" type="submit">بحث</button>
+        <% if (isOpen) { %><button type="button" class="btn-outline" id="blindBtn">إظهار الكمية بالنظام</button><% } %>
+      </form>
+      <div class="tabs no-print">
+        <% [['uncounted', 'لم يُعد'], ['variance', 'الفروق'], ['all', 'الكل']].forEach(t => { %>
+          <a class="<%= view === t[0] ? 'on' : '' %>" href="?view=<%= t[0] %><%= q ? '&q=' + encodeURIComponent(q) : '' %>"><%= t[1] %></a>
+        <% }) %>
+      </div>
+
+      <% if (items.length === 0) { %>
+        <div class="empty-state">مفيش أصناف في العرض ده<%= view === 'uncounted' ? ' — كله اتعد 👏' : '' %></div>
+      <% } else { %>
+        <div id="tbl" class="<%= isOpen ? 'blind' : '' %>">
+        <table>
+          <thead><tr>
+            <th>الصنف</th><th class="col-system">بالنظام</th><th>العدّ الفعلي</th><th>الفرق</th><th>قيمة الفرق</th>
+            <% if (!isOpen) { %><th>النتيجة</th><% } %>
+          </tr></thead>
+          <tbody>
+            <% items.forEach(i => { const diff = i.counted_units == null ? null : i.counted_units - i.system_units; %>
+              <tr data-med="<%= i.medicine_id %>" data-sys="<%= i.system_units %>" data-cost="<%= i.cost_unit %>">
+                <td data-label="الصنف"><strong><%= i.name %></strong>
+                  <% if (i.barcode) { %><br><small class="muted mono"><%= i.barcode %></small><% } %>
+                  <% if (isOpen && i.current_units !== i.system_units) { %><br><span class="pill warn" title="المخزون اتغيّر بعد بداية الجرد (بيع/شراء)">اتغيّر لـ <%= i.current_units %></span><% } %></td>
+                <td class="mono col-system" data-label="بالنظام"><%= i.system_units %></td>
+                <td data-label="العدّ الفعلي">
+                  <% if (isOpen) { %><input class="count-input" type="number" min="0" inputmode="numeric" value="<%= i.counted_units == null ? '' : i.counted_units %>">
+                  <% } else { %><span class="mono"><%= i.counted_units == null ? '—' : i.counted_units %></span><% } %>
+                </td>
+                <td class="mono js-diff <%= diff == null ? '' : (diff < 0 ? 'neg-num' : (diff > 0 ? 'pos-num' : '')) %>" data-label="الفرق"><%= diff == null ? '' : (diff > 0 ? '+' : '') + diff %></td>
+                <td class="mono js-val muted" data-label="قيمة الفرق"><%= diff == null || diff === 0 ? '' : (diff * Number(i.cost_unit)).toFixed(2) %></td>
+                <% if (!isOpen) { %><td data-label="النتيجة"><small class="muted"><%= i.apply_status || '' %></small></td><% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        </div>
+        <% if (items.length >= 300) { %><div class="muted" style="font-size:12px; margin-top:8px;">بنعرض أول 300 صنف — استخدم البحث لتضييق القائمة.</div><% } %>
+      <% } %>
+    </div>
+
+    <% if (isOpen && role === 'admin') { %>
+      <div class="card no-print">
+        <h2>اعتماد الجرد</h2>
+        <p class="muted" style="font-size:13px;">الاعتماد بيضبط مخزون كل صنف اتعدّ واختلف على العدّ الفعلي، ويسجّل كل تسوية في سجل التسويات والنشاطات. الأصناف اللي لم تُعدّ مبتتلمسش. مينفعش التراجع بعد الاعتماد.</p>
+        <% if (totals.counted < totals.items) { %><div class="alert alert-error">لسه <%= totals.items - totals.counted %> صنف لم يُعد — هيفضلوا زي ما هما.</div><% } %>
+        <div class="row-actions">
+          <form action="/stocktake/<%= st.id %>/apply" method="POST" onsubmit="return confirm('اعتماد الجرد وتعديل المخزون؟ مينفعش التراجع.')">
+            <button class="btn" type="submit">اعتماد وتعديل المخزون</button>
+          </form>
+          <form action="/stocktake/<%= st.id %>/cancel" method="POST" onsubmit="return confirm('إلغاء جلسة الجرد؟')">
+            <button class="btn-outline" type="submit">إلغاء الجلسة</button>
+          </form>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <% if (isOpen) { %>
+  <script>
+    const STID = <%= st.id %>;
+    const money = (n) => (Math.round(n * 100) / 100).toFixed(2);
+    function paintRow(tr, counted) {
+      const sys = +tr.dataset.sys, cost = +tr.dataset.cost, d = tr.querySelector('.js-diff'), v = tr.querySelector('.js-val');
+      if (counted === null) { d.textContent = ''; v.textContent = ''; d.className = 'mono js-diff'; return; }
+      const diff = counted - sys;
+      d.textContent = (diff > 0 ? '+' : '') + diff; d.className = 'mono js-diff ' + (diff < 0 ? 'neg-num' : diff > 0 ? 'pos-num' : '');
+      v.textContent = diff === 0 ? '' : money(diff * cost);
+    }
+    document.querySelectorAll('.count-input').forEach((inp) => {
+      inp.addEventListener('change', async () => {
+        const tr = inp.closest('tr'); const raw = inp.value.trim();
+        try {
+          const r = await fetch('/stocktake/' + STID + '/count', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ medicine_id: +tr.dataset.med, counted: raw }) });
+          if (!r.ok) throw new Error();
+          inp.className = 'count-input saved'; paintRow(tr, raw === '' ? null : +raw);
+        } catch (e) { inp.className = 'count-input err'; }
+      });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); inp.blur(); const next = inp.closest('tr').nextElementSibling; if (next) next.querySelector('.count-input').focus(); }
+      });
+    });
+    document.getElementById('blindBtn').addEventListener('click', function () {
+      const t = document.getElementById('tbl'); if (!t) return;
+      t.classList.toggle('blind'); this.textContent = t.classList.contains('blind') ? 'إظهار الكمية بالنظام' : 'إخفاء الكمية بالنظام (عدّ أعمى)';
+    });
+    const scan = document.getElementById('scanInput'), flash = document.getElementById('scanFlash');
+    scan.focus();
+    scan.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return; e.preventDefault();
+      const code = scan.value.trim(); scan.value = ''; if (!code) return;
+      try {
+        const r = await fetch('/stocktake/' + STID + '/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: code }) });
+        const d = await r.json();
+        if (!r.ok) { flash.style.color = 'var(--danger)'; flash.textContent = d.error || 'خطأ'; return; }
+        flash.style.color = 'var(--accent)'; flash.textContent = d.name + ' ← ' + d.counted;
+        const tr = document.querySelector('tr[data-med="' + d.medicine_id + '"]');
+        if (tr) { tr.querySelector('.count-input').value = d.counted; paintRow(tr, d.counted); }
+      } catch (err) { flash.style.color = 'var(--danger)'; flash.textContent = 'مشكلة اتصال'; }
+    });
+  </script>
+  <% } %>
+</body>
+</html>

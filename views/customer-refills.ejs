@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>تذكيرات الصرف - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'customers' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>🔔 تذكيرات إعادة الصرف</h1>
+        <p>عملاء قرّب أو عدّى ميعاد تجديد أدويتهم المزمنة — رسالة واتساب جاهزة بضغطة</p>
+      </div>
+      <a href="/customers" class="btn-outline">← العملاء</a>
+    </div>
+
+    <% if (msg) { %><div class="alert alert-success"><%= msg %></div><% } %>
+
+    <form class="toolbar" method="GET">
+      <div class="field"><label>اعرض اللي ميعاده خلال</label>
+        <select name="days" onchange="this.form.submit()">
+          <% [0, 3, 7, 14, 30].forEach(d => { %><option value="<%= d %>" <%= horizon === d ? 'selected' : '' %>><%= d === 0 ? 'النهارده والمتأخر بس' : d + ' يوم' %></option><% }) %>
+        </select>
+      </div>
+    </form>
+
+    <div class="card">
+      <h2>المستحق (<%= items.length %>)</h2>
+      <% if (items.length === 0) { %>
+        <div class="empty-state">مفيش تذكيرات مستحقة في الفترة دي 🎉</div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>العميل</th><th>الدواء</th><th>آخر صرف</th><th>الميعاد</th><th></th></tr></thead>
+          <tbody>
+            <% items.forEach(r => { %>
+              <tr>
+                <td data-label="العميل"><a href="/customers/<%= r.customer_id %>" style="color:var(--accent); font-weight:700;"><%= r.customer_name %></a><br>
+                  <small class="muted" dir="ltr"><%= r.customer_phone || 'بدون تليفون' %></small></td>
+                <td data-label="الدواء"><%= r.medicine_name %><br><small class="muted">كل <%= r.interval_days %> يوم</small></td>
+                <td class="muted" data-label="آخر صرف"><%= r.last_date %></td>
+                <td data-label="الميعاد">
+                  <% if (r.days_overdue > 0) { %><span class="pill bad">متأخر <%= r.days_overdue %> يوم</span>
+                  <% } else if (r.days_overdue === 0) { %><span class="pill warn">النهارده</span>
+                  <% } else { %><span class="pill ok">بعد <%= -r.days_overdue %> يوم</span><% } %>
+                </td>
+                <td data-label="">
+                  <div class="row-actions">
+                    <% if (r.wa) { %><a class="btn btn-wa btn-sm" href="<%= r.wa %>" target="_blank" rel="noopener">واتساب</a><% } else { %><span class="muted" style="font-size:12px;">لا يوجد رقم</span><% } %>
+                    <form class="inline-form" action="/customers/refills/<%= r.id %>/snooze" method="POST">
+                      <input type="hidden" name="days" value="3"><button class="btn-ghost-sm" type="submit" title="تأجيل 3 أيام">تأجيل 3 أيام</button>
+                    </form>
+                    <form class="inline-form" action="/customers/refills/<%= r.id %>/delete" method="POST" onsubmit="return confirm('حذف التذكير؟')">
+                      <input type="hidden" name="return_to" value="refills"><button class="btn-ghost-sm" type="submit">حذف</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <h2>💡 اقتراحات ذكية</h2>
+      <p class="muted" style="margin-top:-8px; font-size:13px;">عملاء اشتروا نفس الدواء 3 مرات أو أكتر بفواصل منتظمة — غالبًا دواء مزمن. فعّل التذكير بضغطة.</p>
+      <% if (suggestions.length === 0) { %>
+        <div class="empty-state">مفيش اقتراحات دلوقتي. كل ما العملاء يتسجّلوا في الكاشير والمشتريات تتراكم، هتظهر هنا.</div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>العميل</th><th>الدواء</th><th>اشترى</th><th>كل</th><th></th></tr></thead>
+          <tbody>
+            <% suggestions.forEach(s => { %>
+              <tr>
+                <td data-label="العميل"><a href="/customers/<%= s.customer_id %>" style="color:var(--accent);"><%= s.customer_name %></a></td>
+                <td data-label="الدواء"><%= s.medicine_name %></td>
+                <td class="mono" data-label="اشترى"><%= s.purchases %> مرات</td>
+                <td class="mono" data-label="كل"><%= s.avg_gap %> يوم</td>
+                <td data-label="">
+                  <form class="inline-form" action="/customers/<%= s.customer_id %>/refills" method="POST">
+                    <input type="hidden" name="medicine_id" value="<%= s.medicine_id %>">
+                    <input type="hidden" name="interval_days" value="<%= s.avg_gap %>">
+                    <input type="hidden" name="return_to" value="refills">
+                    <button class="btn btn-sm" type="submit">فعّل التذكير</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

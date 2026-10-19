@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>سجل الأدوية الخاضعة للرقابة - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'controlled' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>🔒 سجل الأدوية الخاضعة للرقابة</h1>
+        <p>بيتسجّل تلقائي من الكاشير (اسم المريض + الرقم القومي + الروشتة). غير قابل للتعديل أو الحذف.</p>
+      </div>
+      <div class="row-actions no-print">
+        <a class="btn-outline" href="/controlled?from=<%= from %>&to=<%= to %>&q=<%= encodeURIComponent(q) %>&format=csv">⬇️ تصدير Excel/CSV</a>
+        <button class="btn-outline" onclick="window.print()">🖨️ طباعة</button>
+      </div>
+    </div>
+
+    <form class="toolbar no-print" method="GET">
+      <div class="field"><label>من</label><input type="date" name="from" value="<%= from %>"></div>
+      <div class="field"><label>إلى</label><input type="date" name="to" value="<%= to %>"></div>
+      <div class="field"><label>الصنف</label>
+        <select name="medicine_id"><option value="">الكل</option>
+          <% summary.forEach(s => { %><option value="<%= s.id %>" <%= medicineId === s.id ? 'selected' : '' %>><%= s.name %></option><% }) %>
+        </select></div>
+      <div class="field" style="flex:1; min-width:180px;"><label>مريض / رقم قومي / روشتة</label><input type="text" name="q" value="<%= q %>"></div>
+      <button class="btn" type="submit">عرض</button>
+    </form>
+
+    <div class="card">
+      <h2>ملخص الفترة (<%= from %> → <%= to %>)</h2>
+      <% if (summary.length === 0) { %>
+        <div class="empty-state">مفيش أصناف معلّمة "خاضع للرقابة". علّمها من صفحة الأصناف.</div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>الصنف</th><th>عدد الصرفيات</th><th>الكمية المصروفة (وحدة)</th><th>الرصيد الحالي</th></tr></thead>
+          <tbody>
+            <% summary.forEach(s => { %>
+              <tr><td data-label="الصنف"><%= s.name %></td><td class="mono" data-label="عدد الصرفيات"><%= s.dispensings %></td>
+                <td class="mono" data-label="الكمية"><%= s.dispensed_units %></td><td class="mono" data-label="الرصيد"><%= s.stock_units %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <h2>سجل الصرف (<%= rows.length %>)</h2>
+      <% if (rows.length === 0) { %>
+        <div class="empty-state">مفيش صرف في الفترة دي</div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>التاريخ</th><th>فاتورة</th><th>الصنف</th><th>الكمية</th><th>المريض</th><th>الرقم القومي</th><th>الروشتة</th><th>الطبيب</th><th>الصارف</th></tr></thead>
+          <tbody>
+            <% rows.forEach(r => { %>
+              <tr>
+                <td class="muted" data-label="التاريخ"><%= new Date(r.created_at).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) %></td>
+                <td class="mono" data-label="فاتورة"><a href="/sales/<%= r.invoice_id %>" style="color:var(--accent);">#<%= r.invoice_id %></a>
+                  <% if (r.invoice_status === 'voided') { %><br><span class="pill bad">ملغاة</span><% } %></td>
+                <td data-label="الصنف"><%= r.medicine_name %></td>
+                <td class="mono" data-label="الكمية"><%= r.quantity %> <%= r.unit_label || '' %></td>
+                <td data-label="المريض"><%= r.patient_name %></td>
+                <td class="mono" data-label="الرقم القومي"><%= r.national_id %></td>
+                <td class="mono" data-label="الروشتة"><%= r.prescription_no %></td>
+                <td data-label="الطبيب"><%= r.doctor_name || '—' %></td>
+                <td class="muted" data-label="الصارف"><%= r.dispenser || '—' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

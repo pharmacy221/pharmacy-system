@@ -145,6 +145,16 @@
         </div>
       </div>
 
+      <% if (Number(invoice.credit_amount) > 0) { %>
+        <div class="total-box" style="margin-top:8px;">
+          <div class="total-row"><span class="label">المدفوع:</span><span class="val mono"><%= (Number(invoice.total) - Number(invoice.credit_amount)).toFixed(2) %> ج.م</span></div>
+          <div class="total-row"><span class="label">آجل على الحساب:</span><span class="val mono"><%= Number(invoice.credit_amount).toFixed(2) %> ج.م</span></div>
+          <% if (creditBalance !== null && creditBalance !== undefined) { %>
+            <div class="total-row"><span class="label">إجمالي مديونية الحساب:</span><span class="val mono"><%= Number(creditBalance).toFixed(2) %> ج.م</span></div>
+          <% } %>
+        </div>
+      <% } %>
+
       <div class="receipt-footer">
         <p>شكراً لتعاملكم معنا، نتمنى لكم الشفاء العاجل</p>
         <% if (shopSettings.phone || shopSettings.address) { %>
