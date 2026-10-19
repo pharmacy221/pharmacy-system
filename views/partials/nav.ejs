@@ -18,6 +18,9 @@
       <a href="/sales" class="<%= currentActive === 'sales' ? 'active' : '' %>">فواتير البيع</a>
       <a href="/returns" class="<%= currentActive === 'returns' ? 'active' : '' %>">المرتجعات</a>
       <a href="/products" class="<%= currentActive === 'products' ? 'active' : '' %>">الأصناف والمخزون</a>
+      <% if (typeof role !== 'undefined' && (role === 'admin' || role === 'pharmacist')) { %>
+        <a href="/purchases" class="<%= currentActive === 'purchases' ? 'active' : '' %>">المشتريات</a>
+      <% } %>
       <a href="/products/batches" class="<%= currentActive === 'batches' ? 'active' : '' %>">التشغيلات والصلاحية</a>
      <a href="/symptom-search" class="<%= currentActive === 'symptom-search' ? 'active' : '' %>">بحث بالحالة</a>
       <a href="/drug-lookup" class="<%= currentActive === 'drug-lookup' ? 'active' : '' %>">دليل الأدوية</a>

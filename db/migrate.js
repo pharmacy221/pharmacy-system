@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('./index');
 
-const FILES = ['migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql'];
+const FILES = ['migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql'];
 
 async function main() {
   const statusOnly = process.argv.includes('--status');

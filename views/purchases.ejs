@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>فواتير الشراء - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'purchases' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>فواتير الشراء</h1>
+        <p>البضاعة الواردة من الموردين ومديونيتها</p>
+      </div>
+      <a href="/purchases/new" class="btn">➕ فاتورة شراء جديدة</a>
+    </div>
+
+    <% if (isAdmin) { %>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">إجمالي المستحق للموردين</div><div class="value err mono"><%= Number(totals.due).toFixed(2) %> ج.م</div></div>
+      <div class="stat-card"><div class="label">منه متأخر عن ميعاده</div><div class="value err mono"><%= Number(totals.overdue).toFixed(2) %> ج.م</div></div>
+    </div>
+    <% } %>
+
+    <div class="card">
+      <form method="GET" class="range-form">
+        <div class="field"><label>المورد</label>
+          <select name="supplier"><option value="">الكل</option>
+            <% suppliers.forEach(s => { %><option value="<%= s.id %>" <%= String(filters.supplier) === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }) %>
+          </select></div>
+        <div class="field"><label>الحالة</label>
+          <select name="status"><option value="">الكل</option>
+            <option value="received" <%= filters.status === 'received' ? 'selected' : '' %>>مستلمة</option>
+            <option value="cancelled" <%= filters.status === 'cancelled' ? 'selected' : '' %>>ملغاة</option></select></div>
+        <div class="field"><label>بحث</label><input type="text" name="q" value="<%= filters.q %>" placeholder="رقم فاتورة أو اسم مورد"></div>
+        <div class="field"><label><input type="checkbox" name="unpaid" value="1" <%= filters.unpaid ? 'checked' : '' %>> غير المسددة فقط</label></div>
+        <button type="submit" class="btn-outline btn-sm">تصفية</button>
+      </form>
+
+      <% if (invoices.length === 0) { %>
+        <div class="empty-state">مفيش فواتير شراء مطابقة</div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>#</th><th>المورد</th><th>رقم فاتورة المورد</th><th>التاريخ</th><th>الاستحقاق</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th></tr></thead>
+          <tbody>
+            <% invoices.forEach(i => { %>
+              <tr>
+                <td class="mono" data-label="#"><a href="/purchases/<%= i.id %>" style="color:var(--accent)"><%= i.id %></a></td>
+                <td data-label="المورد"><%= i.supplier_name %></td>
+                <td data-label="رقم فاتورة المورد"><%= i.invoice_number || '—' %></td>
+                <td class="mono" data-label="التاريخ"><%= new Date(i.invoice_date).toLocaleDateString('ar-EG') %></td>
+                <td class="mono" data-label="الاستحقاق"><%= i.due_date ? new Date(i.due_date).toLocaleDateString('ar-EG') : '—' %></td>
+                <td class="mono" data-label="الإجمالي"><%= Number(i.total_amount).toFixed(2) %></td>
+                <td class="mono" data-label="المدفوع"><%= Number(i.paid_amount).toFixed(2) %></td>
+                <td class="mono" data-label="المتبقي"><%= i.status === 'cancelled' ? '—' : Number(i.remaining).toFixed(2) %></td>
+                <td data-label="الحالة">
+                  <% if (i.status === 'cancelled') { %><span class="badge badge-ignored">ملغاة</span>
+                  <% } else if (Number(i.remaining) === 0) { %><span class="badge badge-matched">مدفوعة</span>
+                  <% } else if (i.overdue) { %><span class="badge badge-ignored">متأخرة</span>
+                  <% } else { %><span class="badge badge-pending">مستحقة</span><% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

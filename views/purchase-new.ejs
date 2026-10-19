@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>فاتورة شراء جديدة - <%= shopName %></title>
+  <%- include('partials/head') %>
+  <style>
+    .pi-lines td { padding: 6px 4px; vertical-align: top; }
+    .pi-lines input, .pi-lines select { min-width: 0; width: 100%; }
+    .pi-total { font-size: 20px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <% var active = 'purchases' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>فاتورة شراء جديدة</h1>
+        <p>كل صنف بيدخل المخزون كتشغيلة بتاريخ صلاحيته، والمبلغ المتبقي بيتسجل مديونية على المورد</p>
+      </div>
+      <a href="/purchases" class="btn-ghost-sm">← رجوع</a>
+    </div>
+
+    <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+    <form action="/purchases/create" method="POST" id="piForm">
+      <input type="hidden" name="idempotency_key" value="<%= idempotencyKey %>">
+      <input type="hidden" name="items_json" id="itemsJson">
+
+      <div class="card">
+        <div class="form-grid">
+          <div class="field"><label>المورد *</label>
+            <select name="supplier_id" required>
+              <option value="">-- اختر المورد --</option>
+              <% suppliers.forEach(s => { %><option value="<%= s.id %>" <%= String(form.supplier_id || '') === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }) %>
+            </select></div>
+          <div class="field"><label>رقم فاتورة المورد</label><input type="text" name="invoice_number" maxlength="80" value="<%= form.invoice_number || '' %>"></div>
+          <div class="field"><label>تاريخ الفاتورة</label><input type="date" name="invoice_date" value="<%= form.invoice_date || today %>"></div>
+          <div class="field"><label>ميعاد الاستحقاق (للآجل)</label><input type="date" name="due_date" value="<%= form.due_date || '' %>"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>الأصناف</h2>
+        <datalist id="medList">
+          <% medicines.forEach(m => { %><option value="<%= m.name %> #<%= m.id %>"><% if (m.barcode) { %><%= m.barcode %><% } %></option><% }) %>
+        </datalist>
+        <table class="pi-lines">
+          <thead><tr><th style="width:26%">الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>الصلاحية</th><th>رقم التشغيلة</th><th>الإجمالي</th><th></th></tr></thead>
+          <tbody id="lines"></tbody>
+        </table>
+        <button type="button" class="btn-outline btn-sm" id="addLine">➕ إضافة صنف</button>
+        <p style="color:var(--text-muted); font-size:13px;">السعر هو سعر الوحدة المختارة (علبة / شريط / حبة)، والنظام بيحوّله لتكلفة الحبة.</p>
+      </div>
+
+      <div class="card">
+        <div class="form-grid">
+          <div class="field"><label>إجمالي الفاتورة</label><div class="pi-total mono"><span id="grand">0.00</span> ج.م</div></div>
+          <div class="field"><label>المدفوع الآن (0 = آجل)</label><input type="number" step="0.01" min="0" name="paid_amount" id="paid" value="<%= form.paid_amount || '0' %>"></div>
+          <div class="field"><label>طريقة الدفع</label>
+            <select name="method"><option value="cash">نقدي</option><option value="bank">تحويل بنكي</option><option value="other">أخرى</option></select></div>
+          <div class="field"><label>المتبقي على المورد</label><div class="pi-total mono"><span id="remain">0.00</span> ج.م</div></div>
+        </div>
+        <div class="field"><label>ملاحظات</label><input type="text" name="notes" maxlength="500" value="<%= form.notes || '' %>"></div>
+        <button type="submit" class="btn" id="submitBtn">تسجيل الفاتورة واستلام البضاعة</button>
+      </div>
+    </form>
+  </div>
+
+<script>
+(function () {
+  var MEDS = <%- JSON.stringify(medicines.map(function (m) { return { id: m.id, name: m.name, ups: m.ups, spb: m.spb }; })).replace(/</g, '\\u003c') %>;
+  var BY_ID = {}; MEDS.forEach(function (m) { BY_ID[m.id] = m; });
+  var saved = <%- JSON.stringify((function () { try { return JSON.parse(form.items_json || '[]'); } catch (e) { return []; } })()).replace(/</g, '\\u003c') %>;
+  var tbody = document.getElementById('lines');
+
+  function idFromText(t) { var m = /#(\d+)\s*$/.exec(t || ''); return m ? parseInt(m[1], 10) : null; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function addLine(v) {
+    v = v || {};
+    var tr = document.createElement('tr');
+    var med = v.medicine_id ? BY_ID[v.medicine_id] : null;
+    tr.innerHTML =
+      '<td data-label="الصنف"><input type="text" list="medList" class="f-med" placeholder="اكتب اسم الصنف..." value="' + esc(med ? med.name + ' #' + med.id : '') + '"></td>' +
+      '<td data-label="الوحدة"><select class="f-unit"><option value="box">علبة</option><option value="strip">شريط</option><option value="unit">حبة</option></select></td>' +
+      '<td data-label="الكمية"><input type="number" min="1" step="1" class="f-qty" value="' + esc(v.quantity || '') + '"></td>' +
+      '<td data-label="سعر الوحدة"><input type="number" min="0" step="0.01" class="f-cost" value="' + esc(v.cost == null ? '' : v.cost) + '"></td>' +
+      '<td data-label="الصلاحية"><input type="date" class="f-exp" value="' + esc(v.expiry_date || '') + '"></td>' +
+      '<td data-label="رقم التشغيلة"><input type="text" class="f-batch" maxlength="80" value="' + esc(v.batch_number || '') + '"></td>' +
+      '<td class="mono f-line" data-label="الإجمالي">0.00</td>' +
+      '<td><button type="button" class="btn-ghost-sm f-del" title="حذف">✕</button></td>';
+    tr.querySelector('.f-unit').value = v.unit || 'box';
+    tbody.appendChild(tr);
+    return tr;
+  }
+
+  function read() {
+    var rows = [];
+    tbody.querySelectorAll('tr').forEach(function (tr) {
+      rows.push({
+        medicine_id: idFromText(tr.querySelector('.f-med').value),
+        unit: tr.querySelector('.f-unit').value,
+        quantity: tr.querySelector('.f-qty').value,
+        cost: tr.querySelector('.f-cost').value,
+        expiry_date: tr.querySelector('.f-exp').value,
+        batch_number: tr.querySelector('.f-batch').value.trim() || null,
+        _tr: tr
+      });
+    });
+    return rows;
+  }
+
+  function recalc() {
+    var total = 0;
+    read().forEach(function (r) {
+      var line = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0);
+      r._tr.querySelector('.f-line').textContent = line.toFixed(2);
+      total += line;
+    });
+    document.getElementById('grand').textContent = total.toFixed(2);
+    var paid = parseFloat(document.getElementById('paid').value) || 0;
+    document.getElementById('remain').textContent = Math.max(total - paid, 0).toFixed(2);
+  }
+
+  tbody.addEventListener('input', recalc);
+  tbody.addEventListener('click', function (e) {
+    if (e.target.classList.contains('f-del')) {
+      if (tbody.children.length > 1) { e.target.closest('tr').remove(); recalc(); }
+    }
+  });
+  document.getElementById('paid').addEventListener('input', recalc);
+  document.getElementById('addLine').addEventListener('click', function () { addLine().querySelector('.f-med').focus(); });
+
+  document.getElementById('piForm').addEventListener('submit', function (e) {
+    var rows = read();
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].medicine_id) { e.preventDefault(); alert('البند رقم ' + (i + 1) + ': اختار الصنف من القائمة المقترحة'); return; }
+    }
+    document.getElementById('itemsJson').value = JSON.stringify(rows.map(function (r) { delete r._tr; return r; }));
+    document.getElementById('submitBtn').disabled = true; // منع الضغط المزدوج
+  });
+
+  (saved.length ? saved : [{}]).forEach(addLine);
+  recalc();
+})();
+</script>
+</body>
+</html>

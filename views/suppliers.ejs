@@ -16,6 +16,7 @@
       </div>
     </div>
 
+    <div style="margin-bottom:12px;"><a href="/purchases/new" class="btn btn-sm">➕ فاتورة شراء جديدة</a> <a href="/purchases" class="btn-outline btn-sm">كل فواتير الشراء</a></div>
     <div class="two-col">
       <div class="card">
         <h2>قائمة الموردين <% if (searchQuery) { %><span style="color:var(--text-muted); font-size:13px;">(بحث: "<%= searchQuery %>")</span><% } %></h2>
@@ -31,14 +32,17 @@
         <% } else { %>
           <table>
             <thead>
-              <tr><th>اسم المورد</th><th>الهاتف</th><th>العنوان</th><th></th></tr>
+              <tr><th>اسم المورد</th><th>الهاتف</th><th>المستحق له</th><th></th></tr>
             </thead>
             <tbody>
               <% suppliers.forEach(sup => { %>
                 <tr>
                   <td data-label="اسم المورد"><a href="/suppliers/<%= sup.id %>" style="color:var(--accent)"><%= sup.name %></a></td>
                   <td style="color:var(--text-muted)" data-label="الهاتف"><%= sup.phone || '-' %></td>
-                  <td style="color:var(--text-muted)" data-label="العنوان"><%= sup.address || '-' %></td>
+                  <td class="mono" data-label="المستحق له" style="<%= Number(sup.overdue_due) > 0 ? 'color:var(--danger)' : '' %>">
+                    <%= Number(sup.balance_due).toFixed(2) %>
+                    <% if (Number(sup.overdue_due) > 0) { %><br><span class="badge badge-ignored">متأخر <%= Number(sup.overdue_due).toFixed(2) %></span><% } %>
+                  </td>
                   <td style="display:flex; gap:6px;" data-label="إجراءات">
                     <a href="/suppliers/<%= sup.id %>" class="btn-ghost-sm">التفاصيل</a>
                     <form action="/suppliers/<%= sup.id %>/delete" method="POST" onsubmit="return confirm('تأكيد حذف المورد؟')">

@@ -22,6 +22,7 @@ const symptomSearchRoutes = require('./routes/symptom-search');
 const drugLookupRoutes = require('./routes/drug-lookup');
 const payrollRoutes = require('./routes/payroll');
 const expensesRoutes = require('./routes/expenses');
+const purchasesRoutes = require('./routes/purchases');
 
 
 const { requireLogin } = require('./middleware/auth');
@@ -106,6 +107,7 @@ app.use('/symptom-search', symptomSearchRoutes);
 app.use('/drug-lookup', drugLookupRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/expenses', expensesRoutes);
+app.use('/purchases', purchasesRoutes);
 
 app.use((req, res) => {
   res.status(404).render('error', { code: 404, message: 'الصفحة غير موجودة' });
