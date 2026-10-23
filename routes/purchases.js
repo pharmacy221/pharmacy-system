@@ -4,7 +4,8 @@ const router = express.Router();
 const { query, queryOne } = require('../db');
 const { requireLogin, requireRole } = require('../middleware/auth');
 const { BusinessError, isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
-const { saleLevels } = require('../lib/drug-form');
+const { saleLevels, FORMS, FORM_ORDER } = require('../lib/drug-form');
+const { logActivity } = require('../lib/activity-log');
 
 router.use(requireLogin, requireRole('admin', 'pharmacist'));
 const adminOnly = requireRole('admin');
@@ -70,6 +71,17 @@ const normText = (t) => String(t || '').toLowerCase()
 const SQL_NORM = (expr) => `translate(lower(${expr}), 'أإآةى', 'اااهي')`;
 const escLike = (t) => t.replace(/[\\%_]/g, (c) => '\\' + c);
 
+// شكل الصنف المرجَّع للصفحة: الوحدات المتاحة + الوحدة الكبيرة كافتراضي
+function shapeMed(m) {
+  const lv = saleLevels(m);
+  const big = lv.levels[lv.levels.length - 1];   // أكبر وحدة: علبة للحبوب/الفوار، أو وحدة الصنف (حقنة/شراب...)
+  return {
+    id: m.id, name: m.name, manufacturer: m.manufacturer, barcode: m.barcode, serial_number: m.serial_number,
+    form: lv.formLabel, ups: m.units_per_strip, spb: m.strips_per_box, stock_units: m.stock_units,
+    levels: lv.levels.map((l) => ({ key: l.key, label: l.label, qty: l.qty })), default_unit: big.key, default_label: big.label
+  };
+}
+
 // الأصناف: بالاسم / المادة الفعالة / الشركة المصنّعة / الباركود / السيريال (كل كلمة في أي مكان وبأي ترتيب)
 router.get('/api/medicines', async (req, res, next) => {
   try {
@@ -90,15 +102,7 @@ router.get('/api/medicines', async (req, res, next) => {
        LIMIT 30`, params);
     res.json({
       exact: rows.length > 0 && (rows[0].barcode === raw || rows[0].serial_number === raw),
-      results: rows.map((m) => {
-        const lv = saleLevels(m);
-        const big = lv.levels[lv.levels.length - 1];   // أكبر وحدة: علبة للحبوب/الفوار، أو وحدة الصنف (حقنة/شراب...)
-        return {
-          id: m.id, name: m.name, manufacturer: m.manufacturer, barcode: m.barcode, serial_number: m.serial_number,
-          form: lv.formLabel, ups: m.units_per_strip, spb: m.strips_per_box, stock_units: m.stock_units,
-          levels: lv.levels.map((l) => ({ key: l.key, label: l.label, qty: l.qty })), default_unit: big.key, default_label: big.label
-        };
-      })
+      results: rows.map(shapeMed)
     });
   } catch (err) { next(err); }
 });
@@ -116,6 +120,64 @@ router.get('/api/suppliers', async (req, res, next) => {
        ORDER BY lower(name) LIMIT 30`, params);
     res.json({ results: rows });
   } catch (err) { next(err); }
+});
+
+// ---- إضافة مورد جديد بسرعة من صفحة التشغيلات (من غير مغادرة الصفحة) ----
+router.post('/api/suppliers/add', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const name = String(b.name || '').trim().slice(0, 150);
+    if (!name) return res.status(400).json({ error: 'اسم المورد مطلوب' });
+    const row = await queryOne(
+      `INSERT INTO suppliers (name, phone, company, rep_name) VALUES ($1,$2,$3,$4) RETURNING id, name, company, rep_name, phone`,
+      [name, String(b.phone || '').trim().slice(0, 40) || null, String(b.company || '').trim().slice(0, 150) || null, String(b.rep_name || '').trim().slice(0, 150) || null]);
+    await logActivity(req, { action: 'إضافة مورد', entityType: 'supplier', entityId: row.id, details: { supplier_name: name, from: 'batches' } });
+    res.json({ supplier: row });
+  } catch (err) { next(err); }
+});
+
+// ---- إضافة صنف جديد بسرعة (اسم + باركود + نوع + تعبئة + سعر بيع العلبة) ----
+router.post('/api/medicines/add', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const name = String(b.name || '').trim().slice(0, 200);
+    if (!name) return res.status(400).json({ error: 'اسم الصنف مطلوب' });
+    const kind = FORMS[b.form_kind] ? b.form_kind : 'tablet';
+    const f = FORMS[kind];
+    let ups = Math.min(Math.max(parseInt(b.units_per_strip, 10) || 1, 1), 100000);
+    let spb = Math.min(Math.max(parseInt(b.strips_per_box, 10) || 1, 1), 100000);
+    if (!f.counted) { ups = 1; spb = 1; } else if (!f.strip) { spb = 1; }
+    const total = ups * spb;
+    const boxPrice = b.sale_price_box === undefined || String(b.sale_price_box).trim() === '' ? 0 : Number(b.sale_price_box);
+    if (!Number.isFinite(boxPrice) || boxPrice < 0 || boxPrice > 100000000) return res.status(400).json({ error: 'سعر البيع غير صحيح' });
+    // سعر العلبة هو المدخل؛ سعر الشريط والحبة بيتحسبوا تلقائيًا
+    const unitPrice = Math.round((boxPrice / total) * 100) / 100;
+    const stripPrice = ups > 1 && spb > 1 ? Math.round((boxPrice / spb) * 100) / 100 : null;
+    const boxCol = total > 1 ? boxPrice : null;
+    const barcode = String(b.barcode || '').trim().slice(0, 64) || null;
+    const serial = String(b.serial_number || '').trim().slice(0, 64) || null;
+    const manufacturer = String(b.manufacturer || '').trim().slice(0, 150) || null;
+
+    let row;
+    try {
+      row = await queryOne(
+        `INSERT INTO medicines (name, dosage_form, form_kind, manufacturer, barcode, serial_number, units_per_strip, strips_per_box,
+                                sale_price_unit, sale_price_strip, sale_price_box, stock_units)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0)
+         RETURNING id, name, manufacturer, barcode, serial_number, form_kind, dosage_form, units_per_strip, strips_per_box, stock_units`,
+        [name, f.label, kind, manufacturer, barcode, serial, ups, spb, unitPrice, stripPrice, boxCol]);
+    } catch (err) {
+      if (err && err.code === '23505') return res.status(409).json({ error: 'الباركود ده مستخدم لصنف تاني' });
+      throw err;
+    }
+    await logActivity(req, { action: 'إضافة صنف جديد', entityType: 'medicine', entityId: row.id, details: { medicine_name: name, from: 'batches' } });
+    res.json({ medicine: shapeMed(row) });
+  } catch (err) { next(err); }
+});
+
+// أنواع المنتجات لفورم إضافة الصنف
+router.get('/api/forms', (req, res) => {
+  res.json({ forms: FORM_ORDER.map((k) => ({ key: k, label: FORMS[k].label, counted: !!FORMS[k].counted, strip: !!FORMS[k].strip, unit: FORMS[k].unit })) });
 });
 
 async function renderNew(res, req, extra = {}) {
@@ -147,12 +209,13 @@ router.post('/create', async (req, res, next) => {
     if (!Array.isArray(items) || items.length === 0) throw new BusinessError('لازم تضيف صنف واحد على الأقل');
     items = items.map((i) => ({
       medicine_id: parseId(i.medicine_id), unit: String(i.unit || 'unit'), quantity: Number(i.quantity),
-      cost: Number(i.cost), expiry_date: parseDateStrict(String(i.expiry_date || '')), batch_number: i.batch_number ? String(i.batch_number).slice(0, 80) : null
+      cost: Number(i.cost), discount_percent: i.discount_percent === undefined || String(i.discount_percent).trim() === '' ? 0 : Number(i.discount_percent), expiry_date: parseDateStrict(String(i.expiry_date || '')), batch_number: i.batch_number ? String(i.batch_number).slice(0, 80) : null
     }));
     items.forEach((i, idx) => {
       if (!i.medicine_id) throw new BusinessError(`البند رقم ${idx + 1}: اختار الصنف من القائمة`);
       if (!Number.isInteger(i.quantity) || i.quantity <= 0) throw new BusinessError(`البند رقم ${idx + 1}: الكمية لازم تكون رقم صحيح أكبر من صفر`);
       if (!Number.isFinite(i.cost) || i.cost < 0) throw new BusinessError(`البند رقم ${idx + 1}: السعر غير صحيح`);
+      if (!Number.isFinite(i.discount_percent) || i.discount_percent < 0 || i.discount_percent > 100) throw new BusinessError(`البند رقم ${idx + 1}: نسبة خصم الصنف لازم تكون بين 0 و 100`);
       if (!i.expiry_date) throw new BusinessError(`البند رقم ${idx + 1}: تاريخ الصلاحية مطلوب`);
     });
     const invoiceDate = b.invoice_date ? parseDateStrict(b.invoice_date) : null;

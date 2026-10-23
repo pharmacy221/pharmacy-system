@@ -30,7 +30,7 @@
     <div class="card">
       <h2>البنود</h2>
       <table>
-        <thead><tr><th>الصنف</th><th>التشغيلة</th><th>الصلاحية</th><th>الكمية المُدخلة</th><th>سعر الوحدة</th><th>بالحبة</th><th>تكلفة الحبة</th><th>الإجمالي</th><th>المتبقي في المخزن</th></tr></thead>
+        <thead><tr><th>الصنف</th><th>التشغيلة</th><th>الصلاحية</th><th>الكمية المُدخلة</th><th>سعر الوحدة</th><th>خصم الصنف</th><th>بالحبة</th><th>تكلفة الحبة</th><th>الإجمالي</th><th>المتبقي في المخزن</th></tr></thead>
         <tbody>
           <% const U = { unit: 'حبة', strip: 'شريط', box: 'علبة' }; %>
           <% items.forEach(i => { %>
@@ -40,6 +40,7 @@
               <td class="mono" data-label="الصلاحية"><%= new Date(i.expiry_date).toLocaleDateString('ar-EG') %></td>
               <td class="mono" data-label="الكمية المُدخلة"><%= i.entry_quantity %> <%= U[i.entry_unit] %></td>
               <td class="mono" data-label="سعر الوحدة"><%= Number(i.entry_cost).toFixed(2) %></td>
+              <td class="mono" data-label="خصم الصنف"><%= Number(i.discount_percent) > 0 ? Number(i.discount_percent) + '%' : '—' %></td>
               <td class="mono" data-label="بالحبة"><%= i.quantity_units %></td>
               <td class="mono" data-label="تكلفة الحبة"><%= Number(i.cost_price_unit).toFixed(4) %></td>
               <td class="mono" data-label="الإجمالي"><%= Number(i.line_total).toFixed(2) %></td>

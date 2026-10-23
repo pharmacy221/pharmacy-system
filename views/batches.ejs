@@ -17,6 +17,13 @@
     .chip a { color: var(--accent); }
     .scan-msg { font-size: 13px; margin: 6px 0; min-height: 18px; }
     .scan-msg.err { color: var(--danger); } .scan-msg.ok { color: var(--accent); }
+    .modal-bg { position: fixed; inset: 0; background: var(--overlay); display: none; align-items: center; justify-content: center; z-index: 100; padding: 12px; }
+    .modal { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; }
+    .modal h3 { margin: 0 0 12px; }
+    .modal .actions { display: flex; gap: 8px; margin-top: 14px; }
+    .modal .err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 8px; }
+    .inline-row { display: flex; gap: 8px; align-items: stretch; }
+    .inline-row input { flex: 1; }
     details.card > summary { cursor: pointer; font-size: 18px; font-weight: 700; }
   </style>
 </head>
@@ -54,7 +61,8 @@
         <h2>استلام طلبية جديدة</h2>
         <div class="form-grid">
           <div class="field dd-wrap">
-            <label>المورد * (بالاسم أو الشركة أو المندوب)</label>
+            <label style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><span>المورد * (بالاسم أو الشركة أو المندوب)</span>
+              <button type="button" class="btn-ghost-sm" id="newSupBtn" style="white-space:nowrap;">➕ مورد جديد</button></label>
             <input type="text" id="supSearch" placeholder="اكتب اسم المورد أو الشركة...">
             <div class="dd" id="supList"></div>
             <div id="supChip" style="display:none; margin-top:6px;"></div>
@@ -62,20 +70,21 @@
           <div class="field"><label>رقم فاتورة المورد</label><input type="text" name="invoice_number" maxlength="80"></div>
           <div class="field"><label>تاريخ الطلبية</label><input type="date" name="invoice_date" value="<%= today %>"></div>
           <div class="field"><label>ميعاد الاستحقاق (للآجل)</label><input type="date" name="due_date"></div>
-          <div class="field"><label>نسبة الخصم على الطلبية %</label><input type="number" name="discount_percent" id="disc" min="0" max="100" step="0.01" value="0"></div>
+          <div class="field"><label>خصم إضافي على الطلبية كلها %</label><input type="number" name="discount_percent" id="disc" min="0" max="100" step="0.01" value="0"></div>
         </div>
       </div>
 
       <div class="card">
         <h2>أصناف الطلبية</h2>
         <div class="field dd-wrap">
-          <label>ابحث عن صنف (اسم / شركة / سيريال / باركود) أو اسكن الباركود مباشرة</label>
+          <label style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><span>ابحث عن صنف (اسم / شركة / سيريال / باركود) أو اسكن الباركود مباشرة</span>
+            <button type="button" class="btn-ghost-sm" id="newItemBtn" style="white-space:nowrap;">➕ صنف جديد</button></label>
           <input type="text" id="itemSearch" data-scan-target data-scan-submit="no" placeholder="اكتب أو اسكن الباركود...">
           <div class="dd" id="itemList"></div>
         </div>
         <div class="scan-msg" id="scanMsg"></div>
         <table class="pi-lines">
-          <thead><tr><th style="width:24%">الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة (قبل الخصم)</th><th>الصلاحية</th><th>رقم التشغيلة</th><th>الإجمالي بعد الخصم</th><th></th></tr></thead>
+          <thead><tr><th style="width:24%">الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>خصم الصنف %</th><th>الصلاحية</th><th>رقم التشغيلة</th><th>الإجمالي بعد الخصم</th><th></th></tr></thead>
           <tbody id="lines"></tbody>
         </table>
         <div id="emptyLines" class="empty-state">لسه ما اتضافش أي صنف — ابحث أو اسكن الباركود</div>
@@ -85,18 +94,48 @@
       <div class="card">
         <div class="form-grid">
           <div class="field"><label>الإجمالي قبل الخصم</label><div class="pi-total mono"><span id="subtotal">0.00</span> ج.م</div></div>
-          <div class="field"><label>قيمة الخصم</label><div class="pi-total mono">− <span id="discAmt">0.00</span> ج.م</div></div>
+          <div class="field"><label>إجمالي الخصم (الأصناف + الطلبية)</label><div class="pi-total mono">− <span id="discAmt">0.00</span> ج.م</div></div>
           <div class="field"><label>الصافي</label><div class="pi-total mono"><span id="grand">0.00</span> ج.م</div></div>
           <div class="field"><label>المدفوع الآن (0 = آجل)</label><input type="number" step="0.01" min="0" name="paid_amount" id="paid" value="0"></div>
           <div class="field"><label>طريقة الدفع</label>
             <select name="method"><option value="cash">نقدي</option><option value="bank">تحويل بنكي</option><option value="other">أخرى</option></select></div>
-          <div class="field"><label>المتبقي ل المورد</label><div class="pi-total mono"><span id="remain">0.00</span> ج.م</div></div>
+          <div class="field"><label>المتبقي على المورد</label><div class="pi-total mono"><span id="remain">0.00</span> ج.م</div></div>
         </div>
         <div class="field"><label>ملاحظات</label><input type="text" name="notes" maxlength="500"></div>
         <button type="submit" class="btn" id="submitBtn">تسجيل الطلبية واستلام البضاعة</button>
         <span style="color:var(--text-muted); font-size:13px; margin-inline-start:8px;">بعد التسجيل تقدر تطبع الفاتورة من صفحة الطلبية.</span>
       </div>
     </form>
+
+    <div class="modal-bg" id="supModal"><div class="modal">
+      <h3>➕ إضافة مورد جديد</h3>
+      <div class="field"><label>اسم المورد *</label><input type="text" id="sm_name" maxlength="150"></div>
+      <div class="field"><label>الشركة اللي المندوب بيمثّلها</label><input type="text" id="sm_company" maxlength="150"></div>
+      <div class="form-grid">
+        <div class="field"><label>اسم المندوب</label><input type="text" id="sm_rep" maxlength="150"></div>
+        <div class="field"><label>التليفون</label><input type="text" id="sm_phone" maxlength="40"></div>
+      </div>
+      <div class="err" id="sm_err"></div>
+      <div class="actions"><button type="button" class="btn" id="sm_save">حفظ واختيار المورد</button><button type="button" class="btn-outline btn-sm" data-close="supModal">إلغاء</button></div>
+    </div></div>
+
+    <div class="modal-bg" id="itemModal"><div class="modal">
+      <h3>➕ إضافة صنف جديد</h3>
+      <div class="field"><label>اسم الصنف *</label><input type="text" id="im_name" maxlength="200"></div>
+      <div class="field"><label>الباركود (اسكنه دلوقتي أو ولّد واحد عشوائي)</label>
+        <div class="inline-row"><input type="text" id="im_barcode" dir="ltr" maxlength="64" placeholder="اسكن الباركود هنا..."><button type="button" class="btn-outline btn-sm" id="im_gen">🎲 توليد عشوائي</button></div></div>
+      <div class="form-grid">
+        <div class="field"><label>النوع</label><select id="im_form"></select></div>
+        <div class="field"><label>سعر بيع العلبة (اختياري)</label><input type="number" id="im_price" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="field" id="im_upsBox"><label>عدد الحبات في الشريط/العلبة</label><input type="number" id="im_ups" min="1" step="1" value="1"></div>
+        <div class="field" id="im_spbBox"><label>عدد الشرايط في العلبة</label><input type="number" id="im_spb" min="1" step="1" value="1"></div>
+        <div class="field"><label>الشركة المصنّعة</label><input type="text" id="im_mfr" maxlength="150"></div>
+        <div class="field"><label>السيريال (اختياري)</label><input type="text" id="im_serial" dir="ltr" maxlength="64"></div>
+      </div>
+      <p style="color:var(--text-muted); font-size:12px; margin:0;">سعر الشريط والحبة بيتحسبوا تلقائيًا من سعر العلبة، وتقدر تعدّلهم بعدين من صفحة الأصناف.</p>
+      <div class="err" id="im_err"></div>
+      <div class="actions"><button type="button" class="btn" id="im_save">حفظ وإضافة للطلبية</button><button type="button" class="btn-outline btn-sm" data-close="itemModal">إلغاء</button></div>
+    </div></div>
     <% } %>
 
     <form method="GET" action="/products/batches" class="card" style="display:flex; gap:8px; align-items:center;">
@@ -204,25 +243,27 @@
   }
 
   // ---------- المورد ----------
+  function selectSupplier(s) {
+    $('supplierId').value = s.id; supSearch.value = ''; supSearch.style.display = 'none';
+    var chip = $('supChip'); chip.style.display = 'block';
+    chip.innerHTML = '<span class="chip">' + esc(s.name) + (s.company ? ' — ' + esc(s.company) : '') + ' <a href="#" id="supChange" style="font-size:12px">تغيير</a></span>';
+    $('supChange').addEventListener('click', function (e) { e.preventDefault(); $('supplierId').value = ''; chip.style.display = 'none'; supSearch.style.display = ''; supSearch.focus(); });
+    itemSearch.focus();
+  }
   Dropdown(supSearch, supList,
-    function (q) { return getJson('/purchases/api/suppliers?q=' + encodeURIComponent(q)).then(function (d) { return d.results; }); },
-    function (s) { return esc(s.name) + '<small>' + esc([s.company, s.rep_name ? 'مندوب: ' + s.rep_name : '', s.phone].filter(Boolean).join(' — ')) + '</small>'; },
-    function (s) {
-      $('supplierId').value = s.id; supSearch.value = ''; supSearch.style.display = 'none';
-      var chip = $('supChip'); chip.style.display = 'block';
-      chip.innerHTML = '<span class="chip">' + esc(s.name) + (s.company ? ' — ' + esc(s.company) : '') + ' <a href="#" id="supChange" style="font-size:12px">تغيير</a></span>';
-      $('supChange').addEventListener('click', function (e) { e.preventDefault(); $('supplierId').value = ''; chip.style.display = 'none'; supSearch.style.display = ''; supSearch.focus(); });
-      itemSearch.focus();
-    });
+    function (q) { return getJson('/purchases/api/suppliers?q=' + encodeURIComponent(q)).then(function (d) { return d.results.length || !q ? d.results : [{ __new: true, q: q }]; }); },
+    function (s) { if (s.__new) return '➕ إضافة مورد جديد «' + esc(s.q) + '»'; return esc(s.name) + '<small>' + esc([s.company, s.rep_name ? 'مندوب: ' + s.rep_name : '', s.phone].filter(Boolean).join(' — ')) + '</small>'; },
+    function (s) { if (s.__new) openSupModal(s.q); else selectSupplier(s); });
   supSearch.setAttribute('data-open-empty', '1');
 
   // ---------- الأصناف ----------
   Dropdown(itemSearch, itemList,
-    function (q) { return getJson('/purchases/api/medicines?q=' + encodeURIComponent(q)).then(function (d) { return d.results; }); },
+    function (q) { return getJson('/purchases/api/medicines?q=' + encodeURIComponent(q)).then(function (d) { return d.results.length ? d.results : [{ __new: true, q: q }]; }); },
     function (m) {
+      if (m.__new) return '➕ الصنف مش موجود — إضافة صنف جديد «' + esc(m.q) + '»';
       return esc(m.name) + '<small>' + esc([m.form, m.manufacturer, m.serial_number ? 'سيريال: ' + m.serial_number : '', m.barcode ? 'باركود: ' + m.barcode : '', 'المخزون: ' + m.stock_units].filter(Boolean).join(' — ')) + '</small>';
     },
-    function (m) { addLine(m); itemSearch.value = ''; msg(''); });
+    function (m) { if (m.__new) { openItemModal(m.q); return; } addLine(m); itemSearch.value = ''; msg(''); });
 
   function addLine(med) {
     MEDS[med.id] = med;
@@ -234,6 +275,7 @@
       '<td data-label="الوحدة"><select class="f-unit">' + levels.map(function (l) { return '<option value="' + l.key + '">' + esc(l.label) + '</option>'; }).join('') + '</select></td>' +
       '<td data-label="الكمية"><input type="number" min="1" step="1" class="f-qty" value="1"></td>' +
       '<td data-label="سعر الوحدة"><input type="number" min="0" step="0.01" class="f-cost" placeholder="0.00"></td>' +
+      '<td data-label="خصم الصنف %"><input type="number" min="0" max="100" step="0.01" class="f-disc" value="0"></td>' +
       '<td data-label="الصلاحية"><input type="date" class="f-exp"></td>' +
       '<td data-label="رقم التشغيلة"><input type="text" class="f-batch" maxlength="80"></td>' +
       '<td class="mono f-line" data-label="الإجمالي">0.00</td>' +
@@ -249,20 +291,22 @@
     return Array.prototype.map.call(tbody.querySelectorAll('tr'), function (tr) {
       return {
         _tr: tr, medicine_id: parseInt(tr.getAttribute('data-med'), 10), unit: tr.querySelector('.f-unit').value,
-        quantity: tr.querySelector('.f-qty').value, cost: tr.querySelector('.f-cost').value,
+        quantity: tr.querySelector('.f-qty').value, cost: tr.querySelector('.f-cost').value, discount_percent: tr.querySelector('.f-disc').value || '0',
         expiry_date: tr.querySelector('.f-exp').value, batch_number: tr.querySelector('.f-batch').value.trim() || null
       };
     });
   }
 
   function refresh() {
-    var d = Math.min(Math.max(parseFloat($('disc').value) || 0, 0), 100), sub = 0;
+    var d = Math.min(Math.max(parseFloat($('disc').value) || 0, 0), 100), sub = 0, net = 0;
     rows().forEach(function (r) {
+      var ld = Math.min(Math.max(parseFloat(r.discount_percent) || 0, 0), 100);
       var gross = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0);
-      sub += gross;
-      r._tr.querySelector('.f-line').textContent = (gross * (1 - d / 100)).toFixed(2);
+      var line = gross * (1 - ld / 100) * (1 - d / 100);
+      sub += gross; net += line;
+      r._tr.querySelector('.f-line').textContent = line.toFixed(2);
     });
-    var net = sub * (1 - d / 100), paid = parseFloat($('paid').value) || 0;
+    var paid = parseFloat($('paid').value) || 0;
     $('subtotal').textContent = sub.toFixed(2); $('discAmt').textContent = (sub - net).toFixed(2);
     $('grand').textContent = net.toFixed(2); $('remain').textContent = Math.max(net - paid, 0).toFixed(2);
     $('emptyLines').style.display = tbody.children.length ? 'none' : '';
@@ -274,6 +318,7 @@
 
   // ---------- قارئ الباركود: يضيف الصنف مباشرة (ولو اتمسح تاني نفس الصنف يزوّد الكمية) ----------
   window.onBarcodeScan = function (code) {
+    if ($('itemModal').style.display === 'flex') { $('im_barcode').value = code; $('im_name').focus(); return true; }
     getJson('/purchases/api/medicines?q=' + encodeURIComponent(code)).then(function (d) {
       if (d.exact && d.results.length) {
         var m = d.results[0], existing = tbody.querySelector('tr[data-med="' + m.id + '"]');
@@ -285,6 +330,66 @@
     }).catch(function () { msg('حدث خطأ في الاتصال بالسيرفر', 'err'); });
     return true;
   };
+
+  // ---------- مودال المورد / الصنف الجديد (من غير ما نسيب الصفحة) ----------
+  function postJson(url, body) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || 'حصل خطأ'); return d; }); });
+  }
+  function openModal(id) { $(id).style.display = 'flex'; }
+  function closeModal(id) { $(id).style.display = 'none'; }
+  document.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { closeModal(b.getAttribute('data-close')); }); });
+  document.querySelectorAll('.modal-bg').forEach(function (bg) { bg.addEventListener('mousedown', function (e) { if (e.target === bg) bg.style.display = 'none'; }); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.querySelectorAll('.modal-bg').forEach(function (bg) { bg.style.display = 'none'; }); });
+
+  function openSupModal(name) {
+    ['sm_company', 'sm_rep', 'sm_phone'].forEach(function (i) { $(i).value = ''; });
+    $('sm_name').value = name || ''; $('sm_err').textContent = ''; supList.style.display = 'none';
+    openModal('supModal'); $('sm_name').focus();
+  }
+  $('newSupBtn').addEventListener('click', function () { openSupModal(supSearch.value.trim()); });
+  $('sm_save').addEventListener('click', function () {
+    $('sm_err').textContent = '';
+    postJson('/purchases/api/suppliers/add', { name: $('sm_name').value, company: $('sm_company').value, rep_name: $('sm_rep').value, phone: $('sm_phone').value })
+      .then(function (d) { closeModal('supModal'); selectSupplier(d.supplier); })
+      .catch(function (e) { $('sm_err').textContent = e.message; });
+  });
+
+  var FORMS = null;
+  function syncFormFields() {
+    var f = FORMS && FORMS.filter(function (x) { return x.key === $('im_form').value; })[0];
+    $('im_upsBox').style.display = !f || f.counted ? '' : 'none';
+    $('im_spbBox').style.display = !f || (f.counted && f.strip) ? '' : 'none';
+    $('im_upsBox').querySelector('label').textContent = f && f.strip ? 'عدد الحبات في الشريط' : 'عدد الوحدات في العلبة';
+  }
+  function openItemModal(name) {
+    ['im_barcode', 'im_serial', 'im_mfr', 'im_price'].forEach(function (i) { $(i).value = ''; });
+    $('im_ups').value = 1; $('im_spb').value = 1; $('im_name').value = name || ''; $('im_err').textContent = ''; itemList.style.display = 'none';
+    var show = function () { openModal('itemModal'); (name ? $('im_barcode') : $('im_name')).focus(); };
+    if (FORMS) { show(); return; }
+    getJson('/purchases/api/forms').then(function (d) {
+      FORMS = d.forms;
+      $('im_form').innerHTML = FORMS.map(function (f) { return '<option value="' + f.key + '">' + esc(f.label) + '</option>'; }).join('');
+      $('im_form').value = 'tablet'; syncFormFields(); show();
+    });
+  }
+  $('im_form').addEventListener('change', syncFormFields);
+  $('newItemBtn').addEventListener('click', function () { openItemModal(itemSearch.value.trim()); });
+
+  // توليد باركود داخلي عشوائي (EAN-13 بادئة 20)
+  function ean13Check(d12) { var sum = 0; for (var i = 0; i < 12; i++) sum += parseInt(d12[i], 10) * (i % 2 === 0 ? 1 : 3); return (10 - (sum % 10)) % 10; }
+  $('im_gen').addEventListener('click', function () {
+    var d12 = ('20' + Date.now().toString().slice(-8) + Math.floor(10 + Math.random() * 90)).slice(0, 12);
+    $('im_barcode').value = d12 + ean13Check(d12);
+  });
+  $('im_save').addEventListener('click', function () {
+    $('im_err').textContent = '';
+    postJson('/purchases/api/medicines/add', {
+      name: $('im_name').value, barcode: $('im_barcode').value, form_kind: $('im_form').value, sale_price_box: $('im_price').value,
+      units_per_strip: $('im_ups').value, strips_per_box: $('im_spb').value, manufacturer: $('im_mfr').value, serial_number: $('im_serial').value
+    }).then(function (d) { closeModal('itemModal'); addLine(d.medicine); itemSearch.value = ''; msg('تمت إضافة الصنف الجديد: ' + d.medicine.name, 'ok'); })
+      .catch(function (e) { $('im_err').textContent = e.message; });
+  });
 
   $('piForm').addEventListener('submit', function (e) {
     var rs = rows();

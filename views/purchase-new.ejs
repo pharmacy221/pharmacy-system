@@ -48,7 +48,7 @@
           <% medicines.forEach(m => { %><option value="<%= m.name %> #<%= m.id %>"><% if (m.barcode) { %><%= m.barcode %><% } %></option><% }) %>
         </datalist>
         <table class="pi-lines">
-          <thead><tr><th style="width:26%">الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>الصلاحية</th><th>رقم التشغيلة</th><th>الإجمالي</th><th></th></tr></thead>
+          <thead><tr><th style="width:26%">الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>خصم الصنف %</th><th>الصلاحية</th><th>رقم التشغيلة</th><th>الإجمالي</th><th></th></tr></thead>
           <tbody id="lines"></tbody>
         </table>
         <button type="button" class="btn-outline btn-sm" id="addLine">➕ إضافة صنف</button>
@@ -88,6 +88,7 @@
       '<td data-label="الوحدة"><select class="f-unit"><option value="box">علبة</option><option value="strip">شريط</option><option value="unit">حبة</option></select></td>' +
       '<td data-label="الكمية"><input type="number" min="1" step="1" class="f-qty" value="' + esc(v.quantity || '') + '"></td>' +
       '<td data-label="سعر الوحدة"><input type="number" min="0" step="0.01" class="f-cost" value="' + esc(v.cost == null ? '' : v.cost) + '"></td>' +
+      '<td data-label="خصم الصنف %"><input type="number" min="0" max="100" step="0.01" class="f-disc" value="' + esc(v.discount_percent == null ? 0 : v.discount_percent) + '"></td>' +
       '<td data-label="الصلاحية"><input type="date" class="f-exp" value="' + esc(v.expiry_date || '') + '"></td>' +
       '<td data-label="رقم التشغيلة"><input type="text" class="f-batch" maxlength="80" value="' + esc(v.batch_number || '') + '"></td>' +
       '<td class="mono f-line" data-label="الإجمالي">0.00</td>' +
@@ -105,6 +106,7 @@
         unit: tr.querySelector('.f-unit').value,
         quantity: tr.querySelector('.f-qty').value,
         cost: tr.querySelector('.f-cost').value,
+        discount_percent: tr.querySelector('.f-disc').value || '0',
         expiry_date: tr.querySelector('.f-exp').value,
         batch_number: tr.querySelector('.f-batch').value.trim() || null,
         _tr: tr
@@ -117,7 +119,8 @@
     var total = 0;
     var d = Math.min(Math.max(parseFloat(document.getElementById('disc').value) || 0, 0), 100);
     read().forEach(function (r) {
-      var line = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0) * (1 - d / 100);
+      var ld = Math.min(Math.max(parseFloat(r.discount_percent) || 0, 0), 100);
+      var line = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0) * (1 - ld / 100) * (1 - d / 100);
       r._tr.querySelector('.f-line').textContent = line.toFixed(2);
       total += line;
     });

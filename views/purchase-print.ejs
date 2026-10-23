@@ -66,7 +66,7 @@
 
     <table>
       <thead>
-        <tr><th>#</th><th>الصنف</th><th>التشغيلة</th><th>الصلاحية</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>
+        <tr><th>#</th><th>الصنف</th><th>التشغيلة</th><th>الصلاحية</th><th>الكمية</th><th>سعر الوحدة</th><th>خصم الصنف</th><th>الإجمالي</th></tr>
       </thead>
       <tbody>
         <% const disc = Number(invoice.discount_percent || 0); %>
@@ -81,7 +81,8 @@
             <td class="num"><%= new Date(i.expiry_date).toLocaleDateString('ar-EG') %></td>
             <td class="num"><%= i.entry_quantity %> <%= unitLabel(i, i.entry_unit) %></td>
             <td class="num"><%= Number(i.entry_cost).toFixed(2) %></td>
-            <td class="num"><%= (Number(i.entry_quantity) * Number(i.entry_cost)).toFixed(2) %></td>
+            <td class="num"><%= Number(i.discount_percent) > 0 ? Number(i.discount_percent) + '%' : '—' %></td>
+            <td class="num"><%= Number(i.line_total).toFixed(2) %></td>
           </tr>
         <% }) %>
       </tbody>
@@ -90,8 +91,10 @@
     <div class="totals">
       <div><span>الإجمالي قبل الخصم</span><span class="num"><%= Number(invoice.subtotal_amount != null ? invoice.subtotal_amount : invoice.total_amount).toFixed(2) %> ج.م</span></div>
       <% if (disc > 0) { %>
-        <div><span>نسبة الخصم</span><span class="num"><%= disc %>%</span></div>
-        <div><span>قيمة الخصم</span><span class="num">− <%= (Number(invoice.subtotal_amount != null ? invoice.subtotal_amount : invoice.total_amount) - Number(invoice.total_amount)).toFixed(2) %> ج.م</span></div>
+        <div><span>خصم إضافي على الطلبية</span><span class="num"><%= disc %>%</span></div>
+      <% } %>
+      <% if (disc > 0 || items.some(function (x) { return Number(x.discount_percent) > 0; })) { %>
+        <div><span>إجمالي الخصم</span><span class="num">− <%= (Number(invoice.subtotal_amount != null ? invoice.subtotal_amount : invoice.total_amount) - Number(invoice.total_amount)).toFixed(2) %> ج.م</span></div>
       <% } %>
       <div class="grand"><span>الصافي</span><span class="num"><%= Number(invoice.total_amount).toFixed(2) %> ج.م</span></div>
       <div><span>المدفوع</span><span class="num"><%= Number(invoice.paid_amount).toFixed(2) %> ج.م</span></div>
