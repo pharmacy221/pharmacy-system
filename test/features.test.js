@@ -121,9 +121,8 @@ describe('الشاشات والـ routes الجديدة', { skip: T.SKIP }, () =
       assert.ok(r1.json.error.includes('عميل'));
       const cid = (await db.q1(`INSERT INTO customers (name, phone, credit_limit) VALUES ('صغير', '01222222222', 50) RETURNING id`)).id;
       const r2 = await checkout({ items: [{ medicine_id: m, quantity: 1 }], customer_id: cid, credit: true });
-      assert.equal(r2.status, 400);
-      assert.ok(r2.json.error.includes('حد الآجل'), r2.json.error);
-      assert.equal(await T.stock(db, m), 10);
+      assert.equal(r2.status, 200, 'مفيش حد آجل: البيع الآجل بيعدّي');
+      assert.equal(await T.stock(db, m), 9);
     });
 
     it('عميل مدفوع بالكامل مع وضع الآجل: بيع عادي بدون دين', async () => {
@@ -204,7 +203,7 @@ describe('الشاشات والـ routes الجديدة', { skip: T.SKIP }, () =
       assert.ok((await page(`/customers/${cid}/statement`)).includes('كشف حساب'));
       const s = await req('GET', '/customers/search?q=0155', { user: T.CASHIER });
       assert.equal(s.json.results[0].name, 'سارة أحمد');
-      assert.equal(s.json.results[0].available_credit, 850);
+      assert.equal(s.json.results[0].available_credit, undefined, 'مفيش حد آجل');
       assert.equal((await req('GET', '/customers/search?q=س', { user: T.CASHIER })).json.results.length, 0, 'أقل من حرفين');
       assert.equal((await req('GET', '/customers/999999', { user: T.ADMIN })).status, 404);
     });
@@ -228,15 +227,14 @@ describe('الشاشات والـ routes الجديدة', { skip: T.SKIP }, () =
       assert.equal(Number((await db.q1('SELECT balance FROM customers WHERE id = $1', [cid])).balance), 50);
     });
 
-    it('الكاشير مينفعش يحدد حد آجل ولا يوقف عميل، والأدمن يقدر', async () => {
-      const r = await req('POST', '/customers', { user: T.CASHIER, form: { name: 'حاول', phone: '01777777777', credit_limit: '5000' } });
+    it('الكاشير مينفعش يوقف عميل، والأدمن يقدر', async () => {
+      const r = await req('POST', '/customers', { user: T.CASHIER, form: { name: 'حاول', phone: '01777777777' } });
       assert.equal(r.status, 302);
       const c = await dbCust('01777777777');
-      assert.equal(Number(c.credit_limit), 0);
-      await req('POST', `/customers/${c.id}/update`, { user: T.CASHIER, form: { name: 'حاول', credit_limit: '9999' } });
-      assert.equal(Number((await db.q1('SELECT credit_limit FROM customers WHERE id = $1', [c.id])).credit_limit), 0);
-      await req('POST', `/customers/${c.id}/update`, { user: T.ADMIN, form: { name: 'حاول', credit_limit: '700', is_active: 'on' } });
-      assert.equal(Number((await db.q1('SELECT credit_limit FROM customers WHERE id = $1', [c.id])).credit_limit), 700);
+      await req('POST', `/customers/${c.id}/update`, { user: T.CASHIER, form: { name: 'حاول', is_active: '' } });
+      assert.equal((await db.q1('SELECT is_active FROM customers WHERE id = $1', [c.id])).is_active, true);
+      await req('POST', `/customers/${c.id}/update`, { user: T.ADMIN, form: { name: 'حاول' } });
+      assert.equal((await db.q1('SELECT is_active FROM customers WHERE id = $1', [c.id])).is_active, false);
     });
 
     it('تليفون مكرر أو غير صحيح عند الإضافة: رسالة خطأ', async () => {

@@ -28,6 +28,7 @@ const reorderRoutes = require('./routes/reorder');
 const stocktakeRoutes = require('./routes/stocktake');
 const controlledRoutes = require('./routes/controlled');
 const insightsRoutes = require('./routes/insights');
+const officialPricesRoutes = require('./routes/official-prices');
 
 
 const { requireLogin } = require('./middleware/auth');
@@ -118,6 +119,7 @@ app.use('/reorder', reorderRoutes);
 app.use('/stocktake', stocktakeRoutes);
 app.use('/controlled', controlledRoutes);
 app.use('/insights', insightsRoutes);
+app.use('/official-prices', officialPricesRoutes);
 
 app.use((req, res) => {
   res.status(404).render('error', { code: 404, message: 'الصفحة غير موجودة' });

@@ -43,7 +43,17 @@ async function withSellableStock(rows) {
     [rows.map((r) => r.id)]
   );
   const byId = new Map(sums.map((r) => [r.medicine_id, r.units]));
-  return rows.map((r) => ({ ...r, stock_total_units: r.stock_units, stock_units: byId.get(r.id) || 0 }));
+  // السعر الرسمي للعلبة (لو الصنف مربوط بدليل الأدوية) عشان الكاشير يشوف لو سعرنا مختلف
+  let official = new Map();
+  try {
+    const refs = await query(
+      `SELECT m.id, d.price_egp FROM medicines m JOIN drug_reference d ON d.id = m.ref_id
+       WHERE m.id = ANY($1::int[]) AND d.price_egp > 0`,
+      [rows.map((r) => r.id)]
+    );
+    official = new Map(refs.map((r) => [r.id, Number(r.price_egp)]));
+  } catch (e) { /* دليل الأدوية مش متركّب: نكمل من غير السعر الرسمي */ }
+  return rows.map((r) => ({ ...r, stock_total_units: r.stock_units, stock_units: byId.get(r.id) || 0, official_box: official.get(r.id) || null }));
 }
 
 const SELLABLE_EXISTS = `EXISTS (SELECT 1 FROM batches b WHERE b.medicine_id = medicines.id AND b.quantity_units > 0 AND b.expiry_date >= pharmacy_today())`;
@@ -387,18 +397,21 @@ router.get('/receipt/:invoiceId', async (req, res, next) => {
     const creditEntry = invoice.credit_amount > 0
       ? await queryOne(`SELECT balance_after FROM customer_ledger WHERE invoice_id = $1 AND entry_type = 'credit_sale' ORDER BY id LIMIT 1`, [invoice.id])
       : null;
-    const pharmacyName = await queryOne(`SELECT value FROM settings WHERE key = 'pharmacy_name'`);
-    const pharmacyPhone = await queryOne(`SELECT value FROM settings WHERE key = 'pharmacy_phone'`);
-    const pharmacyAddress = await queryOne(`SELECT value FROM settings WHERE key = 'pharmacy_address'`);
+    const rows = await query(`SELECT key, value FROM settings WHERE key IN ('pharmacy_name','pharmacy_phone','pharmacy_address','receipt_paper','receipt_auto_print','receipt_footer')`);
+    const st = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    const paper = ['80', '58', 'a4'].includes(req.query.paper) ? req.query.paper : (['80', '58', 'a4'].includes(st.receipt_paper) ? st.receipt_paper : '80');
+    const autoPrint = req.query.autoprint === '0' ? false : (req.query.autoprint === '1' || st.receipt_auto_print === '1');
 
     res.render('receipt', {
       invoice,
       items,
       creditBalance: creditEntry ? creditEntry.balance_after : null,
+      paper, autoPrint,
       shopSettings: {
-        name: pharmacyName ? pharmacyName.value : 'الصيدلية',
-        phone: pharmacyPhone ? pharmacyPhone.value : null,
-        address: pharmacyAddress ? pharmacyAddress.value : null
+        name: st.pharmacy_name || 'الصيدلية',
+        phone: st.pharmacy_phone || null,
+        address: st.pharmacy_address || null,
+        footer: st.receipt_footer || null
       }
     });
   } catch (err) {

@@ -66,11 +66,102 @@
       .items-table th, .items-table td { display: table-cell !important; border-bottom: 1px solid #f1f5f9 !important; }
       .items-table td::before { content: none !important; }
     }
+
+    <% if (paper !== 'a4') { %>
+    /* ===== طباعة حرارية (ريسيت) ===== */
+    @page { size: <%= paper %>mm auto; margin: 0; }
+    .thermal { width: <%= paper === '58' ? '48mm' : '72mm' %>; margin: 0 auto; background: #fff; color: #000 !important;
+      padding: 3mm 2mm 6mm; font-family: 'Cairo', Tahoma, sans-serif; font-size: <%= paper === '58' ? '11px' : '12.5px' %>; line-height: 1.45;
+      box-shadow: 0 4px 15px rgba(0,0,0,.12); border: 1px solid #e2e8f0; }
+    .thermal * { color: #000 !important; background: transparent !important; box-sizing: border-box; }
+    .thermal .c { text-align: center; }
+    .thermal h1 { font-size: <%= paper === '58' ? '15px' : '18px' %>; margin: 0 0 2px; font-weight: 800; }
+    .thermal .sm { font-size: <%= paper === '58' ? '10px' : '11px' %>; }
+    .thermal hr { border: 0; border-top: 1px dashed #000; margin: 5px 0; }
+    .thermal .row { display: flex; justify-content: space-between; gap: 6px; }
+    .thermal .it { margin: 3px 0; }
+    .thermal .it .nm { font-weight: 700; }
+    .thermal .it .ln { display: flex; justify-content: space-between; direction: rtl; font-family: 'JetBrains Mono', monospace; font-size: <%= paper === '58' ? '10.5px' : '11.5px' %>; }
+    .thermal .tot { font-size: <%= paper === '58' ? '14px' : '16px' %>; font-weight: 800; }
+    .thermal .mono { font-family: 'JetBrains Mono', monospace; direction: ltr; unicode-bidi: embed; }
+    body { padding: 12px 0; }
+    .paper-switch { display: flex; gap: 6px; justify-content: center; margin: 0 0 12px; flex-wrap: wrap; }
+    .paper-switch a { padding: 4px 12px; border-radius: 99px; border: 1px solid #94a3b8; color: #334155; text-decoration: none; font-size: 12px; font-weight: 700; background: #fff; }
+    .paper-switch a.on { background: #0f172a; color: #fff; border-color: #0f172a; }
+    @media print {
+      html, body { width: <%= paper === '58' ? '58mm' : '80mm' %>; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+      .thermal { width: 100%; box-shadow: none; border: 0; padding: 2mm 2mm 8mm; }
+      .actions, .paper-switch { display: none !important; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    <% } %>
   </style>
 </head>
 <body>
   <% const unitLabels = { unit: 'حبة', strip: 'شريط', box: 'علبة' }; %>
 
+  <% if (paper !== 'a4') { %>
+  <%
+    const fmt = (n) => Number(n).toFixed(2);
+    const when = new Date(invoice.created_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const payLabel = invoice.payment_method === 'card' ? 'بطاقة' : (invoice.payment_method === 'other' ? 'أخرى' : 'كاش');
+    const sub = Number(invoice.total) + Number(invoice.discount || 0);
+  %>
+  <div class="paper-switch">
+    <a href="?paper=80" class="<%= paper === '80' ? 'on' : '' %>">80mm</a>
+    <a href="?paper=58" class="<%= paper === '58' ? 'on' : '' %>">58mm</a>
+    <a href="?paper=a4">A4</a>
+  </div>
+  <div class="thermal" id="thermal">
+    <div class="c">
+      <h1><%= shopSettings.name %></h1>
+      <% if (shopSettings.address) { %><div class="sm"><%= shopSettings.address %></div><% } %>
+      <% if (shopSettings.phone) { %><div class="sm">ت: <span class="mono"><%= shopSettings.phone %></span></div><% } %>
+    </div>
+    <hr>
+    <div class="row sm"><span>فاتورة رقم</span><strong class="mono">#<%= invoice.id %></strong></div>
+    <div class="row sm"><span>التاريخ</span><span class="mono"><%= when %></span></div>
+    <div class="row sm"><span>الدفع</span><span><%= payLabel %></span></div>
+    <% if (invoice.customer_name) { %><div class="row sm"><span>العميل</span><span><%= invoice.customer_name %></span></div><% } %>
+    <hr>
+    <% items.forEach((item) => { %>
+      <div class="it">
+        <div class="nm"><%= item.medicine_name_snapshot %></div>
+        <div class="ln">
+          <span><%= item.quantity %> <%= item.unit_label || unitLabels[item.sale_unit] || '' %> × <%= fmt(item.unit_price) %></span>
+          <strong><%= fmt(item.total) %></strong>
+        </div>
+      </div>
+    <% }) %>
+    <hr>
+    <% if (Number(invoice.discount) > 0) { %>
+      <div class="row"><span>المجموع</span><span class="mono"><%= fmt(sub) %></span></div>
+      <div class="row"><span>الخصم</span><span class="mono">-<%= fmt(invoice.discount) %></span></div>
+    <% } %>
+    <div class="row tot"><span>الإجمالي</span><span class="mono"><%= fmt(invoice.total) %> ج.م</span></div>
+    <% if (Number(invoice.credit_amount) > 0) { %>
+      <hr>
+      <div class="row"><span>المدفوع</span><span class="mono"><%= fmt(Number(invoice.total) - Number(invoice.credit_amount)) %></span></div>
+      <div class="row"><strong>آجل على الحساب</strong><strong class="mono"><%= fmt(invoice.credit_amount) %></strong></div>
+      <% if (creditBalance !== null && creditBalance !== undefined) { %>
+        <div class="row"><span>إجمالي مديونيتك</span><span class="mono"><%= fmt(creditBalance) %></span></div>
+      <% } %>
+    <% } %>
+    <hr>
+    <div class="c sm"><%= shopSettings.footer || 'شكراً لتعاملكم معنا، نتمنى لكم الشفاء العاجل' %></div>
+  </div>
+  <div class="actions" style="max-width:480px; margin:16px auto 0;">
+    <button class="btn-action btn-print" onclick="window.print()">🖨️ طباعة</button>
+    <a href="/pos" class="btn-action btn-new">➕ فاتورة جديدة</a>
+  </div>
+  <script>
+    <% if (autoPrint) { %>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 350); });<% } %>
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); window.print(); }
+      else if (e.key === 'n' || e.key === 'N' || e.key === 'Escape') { window.location.href = '/pos'; }
+    });
+  </script>
+  <% } else { %>
   <div class="receipt-wrapper">
     <div class="receipt-card">
       <div class="shop-header">
@@ -168,8 +259,10 @@
 
     <div class="actions">
       <button class="btn-action btn-print" onclick="window.print()">🖨️ طباعة</button>
+      <a href="?paper=80" class="btn-action" style="background:#475569;color:#fff;">🧾 حراري 80mm</a>
       <a href="/pos" class="btn-action btn-new">➕ فاتورة جديدة</a>
     </div>
   </div>
+  <% } %>
 </body>
 </html>

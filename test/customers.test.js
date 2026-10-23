@@ -52,25 +52,22 @@ describe('العملاء والبيع الآجل', { skip: T.SKIP }, () => {
     assert.equal(await balance(c), 200, 'التكرار ميزودش المديونية');
   });
 
-  it('تجاوز حد الآجل أو حد = 0 أو من غير عميل: يترفض والبيع كله يترجع', async () => {
+  it('آجل من غير عميل مسجّل: يترفض والبيع كله يترجع. ومفيش حد آجل (حتى لو الحد 0)', async () => {
     const m = await medicine(10);
     const before = await T.stock(db, m);
-    const c = await newCustomer('حد صغير', 100);
-    await T.rejectsWith(assert, T.sell(db, { shift, customer: c, credit: 150, items: [{ med: m, qty: 2, price: 100 }] }), 'PH001', 'حد الآجل');
-    const noLimit = await newCustomer('بدون حد', 0);
-    await T.rejectsWith(assert, T.sell(db, { shift, customer: noLimit, credit: 50, items: [{ med: m, qty: 1, price: 100 }] }), 'PH001', 'حد الآجل');
     await T.rejectsWith(assert, T.sell(db, { shift, customer: null, credit: 50, items: [{ med: m, qty: 1, price: 100 }] }), 'PH001', 'عميل مسجّل');
     assert.equal(await T.stock(db, m), before, 'المخزون رجع');
-    assert.equal(await balance(c), 0);
+    const noLimit = await newCustomer('بدون حد', 0);
+    await T.sell(db, { shift, customer: noLimit, credit: 150, items: [{ med: m, qty: 2, price: 100 }] });
+    assert.equal(await balance(noLimit), 150, 'الآجل شغال من غير حد');
   });
 
-  it('الحد بيتحسب على المديونية الحالية + الجديدة، وعميل موقوف مينفعش يشتري آجل', async () => {
+  it('المديونية بتتراكم من غير حد، وعميل موقوف مينفعش يشتري آجل', async () => {
     const m = await medicine();
     const c = await newCustomer('تراكمي', 250);
     await T.sell(db, { shift, customer: c, credit: 200, items: [{ med: m, qty: 2, price: 100 }] });
-    await T.rejectsWith(assert, T.sell(db, { shift, customer: c, credit: 100, items: [{ med: m, qty: 1, price: 100 }] }), 'PH001', 'حد الآجل');
-    await T.sell(db, { shift, customer: c, credit: 50, items: [{ med: m, qty: 1, price: 100 }] });
-    assert.equal(await balance(c), 250);
+    await T.sell(db, { shift, customer: c, credit: 100, items: [{ med: m, qty: 1, price: 100 }] });
+    assert.equal(await balance(c), 300);
     await db.q('UPDATE customers SET is_active = false WHERE id = $1', [c]);
     await T.rejectsWith(assert, T.sell(db, { shift, customer: c, credit: 10, items: [{ med: m, qty: 1, price: 100 }] }), 'PH001', 'موقوف');
   });

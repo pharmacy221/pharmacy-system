@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>الأسعار الرسمية - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'official-prices' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>🏷️ الأسعار الرسمية</h1>
+        <p>مقارنة سعر علبة كل صنف عندك بالسعر الرسمي من دليل الأدوية، وتطبيق التسعيرة الجديدة بضغطة واحدة.</p>
+      </div>
+      <a class="btn-outline" href="/official-prices/history">📜 سجل تغيّر الأسعار</a>
+    </div>
+
+    <% if (msg) { %><div class="alert alert-success"><%= msg %></div><% } %>
+
+    <% if (notReady) { %>
+      <div class="card"><div class="empty-state">دليل الأدوية لسه مش متركّب. شغّل <span class="mono">db/drug_reference.sql</span> ثم <span class="mono">npm run import-drugs</span>.</div></div>
+    <% } else { %>
+
+    <div class="kpi-strip">
+      <div class="kpi <%= diffCount ? 'bad' : '' %>"><div class="k-label">أصناف سعرها مختلف عن الرسمي</div><div class="k-value"><%= diffCount %></div></div>
+      <div class="kpi"><div class="k-label">أصناف مربوطة بالدليل</div><div class="k-value"><%= linkedCount %></div></div>
+      <div class="kpi"><div class="k-label">أصناف مش مربوطة (مفيش سعر رسمي ليها)</div><div class="k-value"><%= unlinked %></div></div>
+    </div>
+
+    <form class="toolbar" method="GET">
+      <div class="field"><label>بحث بالاسم</label><input type="text" name="q" value="<%= q %>" placeholder="اسم الصنف أو المادة الفعالة"></div>
+      <div class="field"><label>العرض</label>
+        <select name="show">
+          <option value="diff" <%= !showAll ? 'selected' : '' %>>المختلف عن الرسمي فقط</option>
+          <option value="all" <%= showAll ? 'selected' : '' %>>كل الأصناف المربوطة</option>
+        </select>
+      </div>
+      <label style="display:flex; gap:6px; align-items:center; margin-bottom:10px;"><input type="checkbox" name="instock" value="1" <%= instock ? 'checked' : '' %> style="width:auto;"> اللي في المخزون فقط</label>
+      <button class="btn" type="submit">عرض</button>
+    </form>
+
+    <% if (canApply && unlinked > 0) { %>
+      <form method="POST" action="/official-prices/link-by-name" style="margin-bottom:12px;">
+        <button type="submit" class="btn-outline">🔗 ربط الأصناف غير المربوطة بالدليل (بتطابق الاسم)</button>
+        <small class="muted">الأصناف اللي بتتربط بتظهر هنا ويتقارن سعرها بالرسمي.</small>
+      </form>
+    <% } %>
+
+    <form method="POST" action="/official-prices/apply" id="applyForm">
+      <input type="hidden" name="q" value="<%= q %>">
+      <input type="hidden" name="instock" value="<%= instock ? '1' : '0' %>">
+      <% if (canApply && diffCount > 0) { %>
+        <div class="toolbar" style="gap:8px;">
+          <button type="submit" class="btn" id="applySelBtn">تطبيق السعر الرسمي على المحدد</button>
+          <button type="submit" name="all" value="1" class="btn-outline" onclick="return confirm('هيتطبق السعر الرسمي على كل الـ <%= diffCount %> صنف المختلفين (حسب الفلاتر الحالية). متأكد؟')">تطبيق على الكل (<%= diffCount %>)</button>
+          <small class="muted">أي تغيير بيتسجّل في سجل الأسعار، والحبة والشريط بيتحسبوا من سعر العلبة الرسمي.</small>
+        </div>
+      <% } %>
+
+      <div class="card" style="padding:0; overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <% if (canApply) { %><th style="width:36px;"><input type="checkbox" id="selAll" style="width:auto;"></th><% } %>
+              <th>الصنف</th><th>المخزون</th><th>سعر العلبة عندك</th><th>السعر الرسمي</th><th>الفرق</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (!rows.length) { %>
+              <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:22px;"><%= showAll ? 'مفيش أصناف مربوطة' : 'كل أسعارك مطابقة للسعر الرسمي ✅' %></td></tr>
+            <% } %>
+            <% rows.forEach((m) => { %>
+              <tr>
+                <% if (canApply) { %><td><% if (m.diff !== 0) { %><input type="checkbox" name="ids" value="<%= m.id %>" class="js-row" style="width:auto;"><% } %></td><% } %>
+                <td><strong><%= m.name %></strong><% if (m.manufacturer) { %><div class="psub muted" style="font-size:11px;"><%= m.manufacturer %></div><% } %></td>
+                <td class="mono"><%= m.stock_units %></td>
+                <td class="mono"><%= m.current_box.toFixed(2) %></td>
+                <td class="mono"><%= Number(m.official_box).toFixed(2) %></td>
+                <td class="mono">
+                  <% if (m.diff === 0) { %><span class="pill ok">مطابق</span>
+                  <% } else if (m.diff > 0) { %><span class="pill warn">أغلى بـ <%= m.diff.toFixed(2) %></span>
+                  <% } else { %><span class="pill bad">أرخص بـ <%= Math.abs(m.diff).toFixed(2) %></span><% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% if (diffCount > rows.length && !showAll) { %><p class="muted">معروض أول <%= rows.length %> من <%= diffCount %>. «تطبيق على الكل» بيشمل كل المختلفين.</p><% } %>
+    </form>
+    <% } %>
+  </div>
+
+  <script>
+    const selAll = document.getElementById('selAll');
+    if (selAll) selAll.addEventListener('change', () => document.querySelectorAll('.js-row').forEach((c) => { c.checked = selAll.checked; }));
+    const form = document.getElementById('applyForm');
+    if (form) form.addEventListener('submit', (e) => {
+      const btn = e.submitter;
+      if (btn && btn.name === 'all') return; // التأكيد بيتعمل في onclick
+      if (!document.querySelectorAll('.js-row:checked').length) { e.preventDefault(); alert('حدد صنف واحد على الأقل'); }
+    });
+  </script>
+</body>
+</html>

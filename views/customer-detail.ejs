@@ -9,8 +9,7 @@
   <%- include('partials/nav') %>
   <% const fmtDT = (d) => d ? new Date(d).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
      const typeLabel = { credit_sale: 'بيع آجل', payment: 'سداد', return_credit: 'مرتجع', void_credit: 'إلغاء فاتورة', adjustment: 'تسوية' };
-     const bal = Number(customer.balance); const limit = Number(customer.credit_limit);
-     const usedPct = limit > 0 ? Math.min(100, Math.max(0, bal / limit * 100)) : 0; %>
+     const bal = Number(customer.balance); %>
 
   <div class="page">
     <div class="page-header">
@@ -32,11 +31,6 @@
       <div class="kpi <%= bal > 0 ? 'bad' : '' %>">
         <div class="k-label">المديونية الحالية</div>
         <div class="k-value <%= bal > 0 ? 'neg-num' : (bal < 0 ? 'pos-num' : '') %>"><%= bal < 0 ? 'رصيد له ' + Math.abs(bal).toFixed(2) : bal.toFixed(2) %></div>
-        <div class="k-sub">
-          <% if (limit > 0) { %>حد الآجل <%= limit.toFixed(2) %> — متاح <%= Math.max(0, limit - bal).toFixed(2) %>
-            <div class="bar-mini <%= usedPct > 85 ? 'bad' : (usedPct > 60 ? 'warn' : '') %>" style="margin-top:6px;"><span style="width:<%= usedPct %>%"></span></div>
-          <% } else { %>الآجل غير مسموح<% } %>
-        </div>
       </div>
       <div class="kpi"><div class="k-label">إجمالي المشتريات</div><div class="k-value"><%= Number(stats.spent).toFixed(2) %></div><div class="k-sub"><%= stats.visits %> زيارة</div></div>
       <div class="kpi"><div class="k-label">آخر زيارة</div><div class="k-value" style="font-size:16px;"><%= stats.last_visit || '—' %></div></div>
@@ -164,7 +158,6 @@
             <div class="field"><label>العنوان</label><input type="text" name="address" value="<%= customer.address || '' %>"></div>
             <div class="field"><label>ملاحظات</label><textarea name="notes" rows="2" maxlength="500"><%= customer.notes || '' %></textarea></div>
             <% if (role === 'admin') { %>
-              <div class="field"><label>حد الآجل (ج.م)</label><input type="number" name="credit_limit" value="<%= limit %>" min="0" step="0.01"></div>
               <label style="display:flex; gap:8px; align-items:center; color:var(--text);"><input type="checkbox" name="is_active" <%= customer.is_active ? 'checked' : '' %> style="width:auto;"> عميل نشط</label>
             <% } %>
             <button class="btn btn-sm" type="submit" style="margin-top:10px;">حفظ</button>

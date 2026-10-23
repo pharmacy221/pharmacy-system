@@ -76,6 +76,16 @@
     .checkout { width: 100%; padding: 14px; font-size: 17px; margin-top: 10px; }
     .shift-warn { margin-bottom: 14px; }
 
+    .credit-panel { border: 1px dashed var(--accent); border-radius: 10px; padding: 10px; margin-bottom: 10px; background: var(--accent-softer); }
+    .credit-panel label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+    .new-cust { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-top: 8px; background: var(--surface); }
+    .new-cust h4 { margin: 0 0 8px; font-size: 14px; }
+    .cust-suggest .dropdown button .st { float: left; font-weight: 700; font-size: 12px; }
+    .cust-suggest .dropdown button .st.bad { color: var(--danger); } .cust-suggest .dropdown button .st.ok { color: var(--accent); }
+    .cust-suggest .dropdown button.add-new { color: var(--accent); font-weight: 700; }
+    .cust-chip .st-line { flex-basis: 100%; font-size: 12px; }
+    .tag.off { color: var(--danger); border-color: var(--danger); background: var(--danger-dim); }
+
     @media (max-width: 960px) { .pos { grid-template-columns: 1fr; } .pos-side { position: static; } }
   </style>
 </head>
@@ -181,8 +191,19 @@
             <div id="couponStatus" class="coupon-status"></div>
           </div>
 
+          <div class="field">
+            <label>نوع البيع</label>
+            <div class="pay-tabs" id="saleTypeTabs">
+              <button type="button" data-v="cash" class="on">بيع عادي</button>
+              <button type="button" data-v="credit">بيع آجل / تقسيط</button>
+            </div>
+            <input type="checkbox" id="creditToggle" hidden>
+          </div>
+
           <div id="custChip" class="cust-chip" style="display:none;"></div>
-          <div class="cust-suggest">
+
+          <!-- بيع عادي: اسم/تليفون العميل اختياري -->
+          <div id="plainCust" class="cust-suggest">
             <div class="row2">
               <div class="field"><label>اسم العميل</label><input type="text" id="customerName" placeholder="اختياري" autocomplete="off"></div>
               <div class="field"><label>التليفون</label><input type="text" id="customerPhone" placeholder="01xxxxxxxxx" autocomplete="off" dir="ltr"></div>
@@ -190,12 +211,32 @@
             <div class="dropdown" id="custDropdown" style="display:none;"></div>
           </div>
 
-          <div class="field" id="creditRow">
-            <label style="display:flex; gap:8px; align-items:center; color:var(--text); cursor:pointer;">
-              <input type="checkbox" id="creditToggle" style="width:auto;"> بيع آجل (على حساب العميل)
-            </label>
-            <div id="creditBox" style="display:none; margin-top:8px;">
-              <label>المدفوع دلوقتي (ج.م)</label>
+          <!-- آجل / تقسيط: لازم عميل (بحث بالاسم أو الموبايل أو إضافة عميل جديد) -->
+          <div id="creditPanel" class="credit-panel" style="display:none;">
+            <div class="cust-suggest" id="creditSearchWrap">
+              <label>العميل (إجباري) — اكتب الاسم أو رقم الموبايل</label>
+              <div class="row2" style="align-items:stretch;">
+                <input type="text" id="creditSearch" placeholder="ابحث أو اكتب عميل جديد..." autocomplete="off">
+                <button type="button" class="btn-ghost-sm" id="newCustBtn" style="max-width:110px;">＋ عميل جديد</button>
+              </div>
+              <div class="dropdown" id="creditDropdown" style="display:none;"></div>
+            </div>
+
+            <div id="newCustForm" class="new-cust" style="display:none;">
+              <h4>إضافة عميل جديد</h4>
+              <div class="row2">
+                <div class="field"><label>الاسم *</label><input type="text" id="ncName" maxlength="120" autocomplete="off"></div>
+                <div class="field"><label>الموبايل</label><input type="text" id="ncPhone" maxlength="30" dir="ltr" placeholder="01xxxxxxxxx" autocomplete="off"></div>
+              </div>
+              <div id="ncError" class="warn" style="display:none; margin-bottom:6px;"></div>
+              <div class="row2">
+                <button type="button" class="btn" id="ncSave">حفظ وإضافة للفاتورة</button>
+                <button type="button" class="btn-ghost-sm" id="ncCancel">إلغاء</button>
+              </div>
+            </div>
+
+            <div id="creditBox" style="margin-top:8px;">
+              <label>المدفوع دلوقتي (ج.م) — الباقي بيتسجّل على حساب العميل</label>
               <input type="number" id="paidNow" value="0" min="0" step="0.01">
               <div class="muted" id="creditInfo" style="font-size:12px; margin-top:6px;"></div>
             </div>
@@ -255,6 +296,16 @@
       if (key === 'unit') return Number(m.sale_price_unit);
       if (key === 'strip') return Number(m.sale_price_strip || m.sale_price_unit * ups);
       return Number(m.sale_price_box || m.sale_price_unit * ups * spb);
+    }
+    // فرق سعر العلبة عن السعر الرسمي (null لو الصنف مش مربوط بالدليل أو مفيش فرق)
+    function officialDiff(m) {
+      if (!m.official_box) return null;
+      const d = Math.round((levelPrice(m, 'box') - Number(m.official_box)) * 100) / 100;
+      return Math.abs(d) < 0.01 ? null : d;
+    }
+    function officialTag(m) {
+      const d = officialDiff(m);
+      return d === null ? '' : `<span class="tag off" title="السعر الرسمي للعلبة ${money(m.official_box)}">⚠ مش السعر الرسمي (${money(m.official_box)})</span>`;
     }
     function levelQty(m, key) { const l = m.levels.find((x) => x.key === key); return l ? l.qty : 1; }
     function levelLabel(m, key) { const l = m.levels.find((x) => x.key === key); return l ? l.label : key; }
@@ -332,6 +383,7 @@
               <div class="pname">${esc(m.name)}
                 ${m.form_label ? `<span class="tag form">${esc(m.form_label)}</span>` : ''}
                 ${m.requires_prescription ? '<span class="tag rx">روشتة</span>' : ''}
+                ${officialTag(m)}
               </div>
               ${m.generic_name ? `<div class="psub">${esc(m.generic_name)}</div>` : ''}
             </td>
@@ -385,6 +437,7 @@
           <tr class="${idx === activeLine() ? 'sel-line' : ''}">
             <td><div class="pname">${esc(i.m.name)}</div>
               ${i.m.requires_prescription ? '<div class="psub" style="color:var(--amber)">تحتاج روشتة</div>' : ''}
+              ${officialDiff(i.m) !== null ? `<div class="psub" style="color:var(--danger)">⚠ سعر العلبة الرسمي ${money(i.m.official_box)}</div>` : ''}
               ${over ? `<div class="warn">المتاح في المخزون: ${esc(stockText(i.m))}</div>` : ''}</td>
             <td>${unitCell}</td>
             <td class="num">${money(price)}</td>
@@ -455,33 +508,61 @@
       return $('discountType').value === 'percent' ? (sub * v) / 100 : v;
     }
     let selectedCustomer = null;
+    const isCredit = () => $('creditToggle').checked;
     function cartHasControlled() { return cart.some((i) => i.m.controlled_substance); }
+
     function refreshExtras() {
       $('controlledBox').style.display = cartHasControlled() ? 'block' : 'none';
-      const on = $('creditToggle').checked;
-      $('creditBox').style.display = on ? 'block' : 'none';
-      if (on) {
-        const total = parseFloat($('cartTotal').textContent) || 0;
-        const paid = Math.max(parseFloat($('paidNow').value) || 0, 0);
-        const credit = Math.max(0, total - paid);
-        let txt = 'هيتسجّل على حساب العميل: ' + money(credit) + ' ج.م';
-        if (selectedCustomer) txt += ' — متاح له ' + money(selectedCustomer.available_credit) + ' ج.م';
-        else txt += ' — اختار العميل أو اكتب تليفونه';
-        $('creditInfo').textContent = txt;
-      }
+      if (!isCredit()) return;
+      const total = parseFloat($('cartTotal').textContent) || 0;
+      const paid = Math.max(parseFloat($('paidNow').value) || 0, 0);
+      const credit = Math.max(0, Math.round((total - paid) * 100) / 100);
+      const info = $('creditInfo');
+      let txt = 'هيتسجّل على حساب العميل: ' + money(credit) + ' ج.م';
+      if (!selectedCustomer) txt += ' — اختار العميل أو أضف عميل جديد';
+      info.textContent = txt;
     }
-    $('creditToggle').addEventListener('change', refreshExtras);
+
+    // حالة حساب العميل: عليه فلوس / له رصيد / مفيش عليه
+    function debtPill(c) {
+      const bal = Number(c.balance) || 0;
+      const el = document.createElement('span');
+      if (bal > 0.005) { el.className = 'pill bad'; el.textContent = 'عليه ' + money(bal) + ' ج.م'; }
+      else if (bal < -0.005) { el.className = 'pill ok'; el.textContent = 'له رصيد ' + money(-bal) + ' ج.م'; }
+      else { el.className = 'pill ok'; el.textContent = '✓ مفيش عليه فلوس'; }
+      return el;
+    }
+
+    // ---------- العميل: بحث بالاسم/الموبايل + اختيار + إضافة عميل جديد ----------
+    let custTimer = null;
+    function setSaleType(credit) {
+      $('creditToggle').checked = credit;
+      $('saleTypeTabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', (x.dataset.v === 'credit') === credit));
+      $('creditPanel').style.display = credit ? 'block' : 'none';
+      $('plainCust').style.display = credit ? 'none' : 'block';
+      if (credit && !selectedCustomer) {
+        const v = $('customerPhone').value.trim() || $('customerName').value.trim();
+        if (v && !$('creditSearch').value) { $('creditSearch').value = v; searchCustomers(v, $('creditDropdown'), true); }
+        setTimeout(() => $('creditSearch').focus(), 30);
+      }
+      if (selectedCustomer) chooseCustomer(selectedCustomer);
+      refreshExtras();
+    }
+    $('saleTypeTabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setSaleType(b.dataset.v === 'credit'); });
     $('paidNow').addEventListener('input', refreshExtras);
 
-    // ---------- العميل: بحث بالاسم/التليفون واختيار + تذكيرات الصرف ----------
-    let custTimer = null;
-    function clearCustomer() { selectedCustomer = null; $('custChip').style.display = 'none'; refreshExtras(); }
+    function clearCustomer() {
+      selectedCustomer = null; $('custChip').style.display = 'none';
+      $('customerName').value = ''; $('customerPhone').value = ''; $('creditSearch').value = '';
+      refreshExtras();
+    }
     function chooseCustomer(c) {
       selectedCustomer = c; $('customerName').value = c.name; $('customerPhone').value = c.phone || '';
-      $('custDropdown').style.display = 'none';
+      $('creditSearch').value = c.name;
+      $('custDropdown').style.display = 'none'; $('creditDropdown').style.display = 'none'; $('newCustForm').style.display = 'none';
       const chip = $('custChip'); chip.innerHTML = ''; chip.style.display = 'flex';
-      const nm = document.createElement('strong'); nm.textContent = '👤 ' + c.name; chip.appendChild(nm);
-      if (Number(c.balance) > 0) { const b = document.createElement('span'); b.className = 'pill bad'; b.textContent = 'عليه ' + money(c.balance) + ' ج.م'; chip.appendChild(b); }
+      const nm = document.createElement('strong'); nm.textContent = '👤 ' + c.name + (c.phone ? ' · ' + c.phone : ''); chip.appendChild(nm);
+      chip.appendChild(debtPill(c));
       (c.refills || []).forEach((r) => {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'refill-chip';
         b.textContent = '🔔 ' + r.name + (r.days_overdue > 0 ? ' (متأخر)' : '');
@@ -492,28 +573,71 @@
         });
         chip.appendChild(b);
       });
-      const x = document.createElement('button'); x.type = 'button'; x.className = 'btn-ghost-sm'; x.textContent = '✕'; x.addEventListener('click', () => { clearCustomer(); }); chip.appendChild(x);
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'btn-ghost-sm'; x.textContent = '✕'; x.title = 'تغيير العميل';
+      x.addEventListener('click', () => { clearCustomer(); if (isCredit()) $('creditSearch').focus(); }); chip.appendChild(x);
       refreshExtras();
     }
-    function searchCustomers(q) {
+
+    function openNewCustomer(seed) {
+      const digits = String(seed || '').replace(/\D/g, '');
+      const looksPhone = digits.length >= 7 && digits.length >= String(seed).trim().length - 3;
+      $('ncName').value = looksPhone ? '' : String(seed || '').trim();
+      $('ncPhone').value = looksPhone ? String(seed).trim() : '';
+      $('ncError').style.display = 'none';
+      $('creditDropdown').style.display = 'none';
+      $('newCustForm').style.display = 'block';
+      (looksPhone ? $('ncName') : $('ncPhone')).focus();
+    }
+    async function saveNewCustomer() {
+      const name = $('ncName').value.trim(), phone = $('ncPhone').value.trim();
+      const err = (m) => { $('ncError').textContent = m; $('ncError').style.display = 'block'; };
+      if (!name) return err('اكتب اسم العميل');
+      $('ncSave').disabled = true;
+      try {
+        const body = { name, phone };
+        const r = await fetch('/customers/quick', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json();
+        if (!r.ok) return err(d.error || 'تعذّرت إضافة العميل');
+        chooseCustomer(d.customer);
+        showStatus(d.existing ? 'العميل موجود بالفعل — تم اختياره' : 'تمت إضافة العميل', 'ok');
+      } catch (e) { err('حدث خطأ في الاتصال بالسيرفر'); }
+      finally { $('ncSave').disabled = false; }
+    }
+    $('newCustBtn').addEventListener('click', () => openNewCustomer($('creditSearch').value));
+    $('ncSave').addEventListener('click', saveNewCustomer);
+    $('ncCancel').addEventListener('click', () => { $('newCustForm').style.display = 'none'; $('creditSearch').focus(); });
+    ['ncName', 'ncPhone'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveNewCustomer(); } }));
+
+    function searchCustomers(q, dd, allowNew) {
       clearTimeout(custTimer);
-      if (q.trim().length < 2) { $('custDropdown').style.display = 'none'; return; }
+      q = String(q || '').trim();
+      if (q.length < 2) { dd.style.display = 'none'; return; }
       custTimer = setTimeout(async () => {
         try {
-          const r = await fetch('/customers/search?q=' + encodeURIComponent(q.trim())); const d = await r.json();
-          const dd = $('custDropdown'); dd.innerHTML = '';
+          const r = await fetch('/customers/search?q=' + encodeURIComponent(q)); const d = await r.json();
+          dd.innerHTML = '';
           (d.results || []).forEach((c) => {
             const b = document.createElement('button'); b.type = 'button';
-            b.textContent = c.name + (c.phone ? ' — ' + c.phone : '') + (c.refills && c.refills.length ? '  🔔' : '') + (Number(c.balance) > 0 ? '  (عليه ' + money(c.balance) + ')' : '');
+            b.append(c.name + (c.phone ? ' — ' + c.phone : '') + (c.refills && c.refills.length ? '  🔔' : ''));
+            const bal = Number(c.balance) || 0;
+            const st = document.createElement('span'); st.className = 'st ' + (bal > 0.005 ? 'bad' : 'ok');
+            st.textContent = bal > 0.005 ? 'عليه ' + money(bal) + ' ج.م' : (bal < -0.005 ? 'له ' + money(-bal) : '✓ مفيش عليه');
+            b.appendChild(st);
             b.addEventListener('click', () => chooseCustomer(c)); dd.appendChild(b);
           });
-          dd.style.display = (d.results || []).length ? 'block' : 'none';
+          if (allowNew) {
+            const n = document.createElement('button'); n.type = 'button'; n.className = 'add-new';
+            n.textContent = '＋ إضافة «' + q + '» كعميل جديد';
+            n.addEventListener('click', () => openNewCustomer(q)); dd.appendChild(n);
+          }
+          dd.style.display = dd.children.length ? 'block' : 'none';
         } catch (e) { /* تجاهل */ }
       }, 220);
     }
-    $('customerName').addEventListener('input', (e) => { if (selectedCustomer) clearCustomer(); searchCustomers(e.target.value); });
-    $('customerPhone').addEventListener('input', (e) => { if (selectedCustomer) clearCustomer(); searchCustomers(e.target.value); });
-    document.addEventListener('click', (e) => { if (!e.target.closest('.cust-suggest')) $('custDropdown').style.display = 'none'; });
+    $('customerName').addEventListener('input', (e) => { if (selectedCustomer) clearCustomer(); searchCustomers(e.target.value, $('custDropdown'), false); });
+    $('customerPhone').addEventListener('input', (e) => { if (selectedCustomer) clearCustomer(); searchCustomers(e.target.value, $('custDropdown'), false); });
+    $('creditSearch').addEventListener('input', (e) => { if (selectedCustomer) { selectedCustomer = null; $('custChip').style.display = 'none'; refreshExtras(); } searchCustomers(e.target.value, $('creditDropdown'), true); });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.cust-suggest')) { $('custDropdown').style.display = 'none'; $('creditDropdown').style.display = 'none'; } });
 
     function updateSummary() {
       const sub = subtotal();
@@ -624,6 +748,7 @@
       if (!cart.length) return fail('الفاتورة فارغة، أضف صنفاً أولاً');
       $('checkoutBtn').disabled = true; $('checkoutBtn').textContent = 'جاري التسجيل...';
       try {
+        if (isCredit() && !selectedCustomer) return fail('البيع الآجل / التقسيط محتاج عميل: ابحث عنه أو اضغط «＋ عميل جديد»');
         const payload = {
           items: cart.map((i) => ({ medicine_id: i.m.id, sale_unit: i.sale_unit, quantity: i.quantity })),
           customer_name: $('customerName').value, customer_phone: $('customerPhone').value,
@@ -665,7 +790,7 @@
     Shortcuts.on('pos_pay_other', payBtn('other'));
     Shortcuts.on('pos_discount', focusEl('discountValue'));
     Shortcuts.on('pos_coupon', focusEl('couponInput'));
-    Shortcuts.on('pos_customer', focusEl('customerName'));
+    Shortcuts.on('pos_customer', () => focusEl(isCredit() ? 'creditSearch' : 'customerName')());
     Shortcuts.on('pos_notes', focusEl('notes'));
     // لو قايمة نتايج البحث ظاهرة والمؤشر في خانة البحث، الأسهم بتتنقل بين النتايج زي الأول (نسيب السهم لحاله)
     const cartKey = (fn) => (e) => {

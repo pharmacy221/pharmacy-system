@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <title>سجل تغيّر الأسعار - <%= shopName %></title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <% var active = 'official-prices' %>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>📜 سجل تغيّر الأسعار</h1>
+        <p>كل تعديل في سعر بيع صنف (يدوي أو من الأسعار الرسمية) بيتسجّل هنا بالقديم والجديد ومين عمله.</p>
+      </div>
+      <a class="btn-outline" href="/official-prices">← الأسعار الرسمية</a>
+    </div>
+
+    <% if (typeof notReady !== 'undefined' && notReady) { %>
+      <div class="card"><div class="empty-state">شغّل <span class="mono">npm run migrate</span> عشان يتفعّل سجل الأسعار.</div></div>
+    <% } else { %>
+    <form class="toolbar" method="GET">
+      <div class="field"><label>اسم الصنف</label><input type="text" name="q" value="<%= q %>"></div>
+      <div class="field"><label>المصدر</label>
+        <select name="source">
+          <option value="">الكل</option>
+          <option value="manual" <%= source === 'manual' ? 'selected' : '' %>>تعديل يدوي</option>
+          <option value="official" <%= source === 'official' ? 'selected' : '' %>>سعر رسمي</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">عرض</button>
+    </form>
+
+    <div class="card" style="padding:0; overflow:auto;">
+      <table>
+        <thead><tr><th>التاريخ</th><th>الصنف</th><th>سعر العلبة</th><th>سعر الحبة</th><th>المصدر</th><th>بواسطة</th></tr></thead>
+        <tbody>
+          <% if (!rows.length) { %><tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:22px;">لسه مفيش تغييرات متسجّلة</td></tr><% } %>
+          <% rows.forEach((h) => { %>
+            <tr>
+              <td class="mono"><%= new Date(h.changed_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %></td>
+              <td><strong><%= h.medicine_name %></strong></td>
+              <td class="mono"><%= h.old_box != null ? Number(h.old_box).toFixed(2) : '—' %> ← <strong><%= h.new_box != null ? Number(h.new_box).toFixed(2) : '—' %></strong></td>
+              <td class="mono"><%= h.old_unit != null ? Number(h.old_unit).toFixed(2) : '—' %> ← <strong><%= h.new_unit != null ? Number(h.new_unit).toFixed(2) : '—' %></strong></td>
+              <td><span class="pill <%= h.source === 'official' ? 'ok' : 'warn' %>"><%= h.source === 'official' ? 'سعر رسمي' : 'يدوي' %></span></td>
+              <td><%= h.username || '—' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+</body>
+</html>

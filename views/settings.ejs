@@ -43,6 +43,33 @@
       </div>
 
       <div class="card">
+        <h2>طباعة الفاتورة</h2>
+        <p style="color:var(--text-muted); font-size:13px; margin-top:-8px; margin-bottom:16px;">
+          اختار مقاس ورق الطابعة الحرارية. في الطباعة الحرارية خلّي إعدادات الطابعة: الهوامش «بدون»، والرؤوس والتذييلات مقفولة.
+        </p>
+        <form action="/settings/print" method="POST">
+          <div class="field">
+            <label>مقاس الورق</label>
+            <select name="receipt_paper">
+              <option value="80" <%= pharmacySettings.receipt_paper === '80' ? 'selected' : '' %>>حراري 80 مم</option>
+              <option value="58" <%= pharmacySettings.receipt_paper === '58' ? 'selected' : '' %>>حراري 58 مم</option>
+              <option value="a4" <%= pharmacySettings.receipt_paper === 'a4' ? 'selected' : '' %>>A4 (فاتورة كاملة)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+              <input type="checkbox" name="receipt_auto_print" <%= pharmacySettings.receipt_auto_print ? 'checked' : '' %> style="width:auto;"> طباعة تلقائية أول ما الفاتورة تتسجّل
+            </label>
+          </div>
+          <div class="field">
+            <label>سطر ختام الفاتورة</label>
+            <input type="text" name="receipt_footer" maxlength="160" value="<%= pharmacySettings.receipt_footer || '' %>" placeholder="شكراً لتعاملكم معنا، نتمنى لكم الشفاء العاجل">
+          </div>
+          <button type="submit" class="btn">حفظ إعدادات الطباعة</button>
+        </form>
+      </div>
+
+      <div class="card">
         <h2>تغيير كلمة المرور</h2>
         <form action="/settings/password" method="POST">
           <div class="field">

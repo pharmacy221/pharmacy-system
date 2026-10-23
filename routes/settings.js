@@ -25,12 +25,15 @@ router.use(async (req, res, next) => {
 });
 
 async function getPharmacySettings() {
-  const rows = await query(`SELECT key, value FROM settings WHERE key IN ('pharmacy_name', 'pharmacy_phone', 'pharmacy_address')`);
+  const rows = await query(`SELECT key, value FROM settings WHERE key IN ('pharmacy_name', 'pharmacy_phone', 'pharmacy_address', 'receipt_paper', 'receipt_auto_print', 'receipt_footer')`);
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   return {
     name: map.pharmacy_name || '',
     phone: map.pharmacy_phone || '',
-    address: map.pharmacy_address || ''
+    address: map.pharmacy_address || '',
+    receipt_paper: ['80', '58', 'a4'].includes(map.receipt_paper) ? map.receipt_paper : '80',
+    receipt_auto_print: map.receipt_auto_print === '1',
+    receipt_footer: map.receipt_footer || ''
   };
 }
 
@@ -112,6 +115,25 @@ router.post('/shop-info', async (req, res, next) => {
         [key, value]
       );
     }
+    res.redirect('/settings');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// إعدادات طباعة الفاتورة: مقاس الورق (حراري 80/58 مم أو A4)، الطباعة التلقائية، وسطر ختام الفاتورة
+router.post('/print', async (req, res, next) => {
+  try {
+    const paper = ['80', '58', 'a4'].includes(req.body.receipt_paper) ? req.body.receipt_paper : '80';
+    const entries = [
+      ['receipt_paper', paper],
+      ['receipt_auto_print', req.body.receipt_auto_print === 'on' ? '1' : '0'],
+      ['receipt_footer', String(req.body.receipt_footer || '').trim().slice(0, 160) || null]
+    ];
+    for (const [key, value] of entries) {
+      await query(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`, [key, value]);
+    }
+    await logActivity(req, { action: 'تعديل إعدادات الطباعة', entityType: 'settings' });
     res.redirect('/settings');
   } catch (err) {
     next(err);

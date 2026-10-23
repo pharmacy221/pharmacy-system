@@ -290,6 +290,8 @@ router.post('/:id/update', requireAdmin, async (req, res, next) => {
     const pack = packFields(kind || (current && current.form_kind) || null, req.body);
 
     await withTransaction(async (c) => {
+      // سجل تغيّر الأسعار (migration_006): بنعرّفه مين غيّر السعر والمصدر يدوي
+      await c.query(`SELECT set_config('app.price_source', 'manual', true), set_config('app.user_id', $1, true)`, [String(req.session.userId)]);
       await c.query(
         `UPDATE medicines SET
             name = $1, generic_name = $2, category = $3, dosage_form = $4, manufacturer = $5, barcode = $6, serial_number = $7,

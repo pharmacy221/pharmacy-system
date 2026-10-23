@@ -98,7 +98,7 @@ router.get('/search', async (req, res, next) => {
       cond += ` OR regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') LIKE $2`;
     }
     const rows = await query(
-      `SELECT c.id, c.name, c.phone, c.balance, c.credit_limit
+      `SELECT c.id, c.name, c.phone, c.balance
        FROM customers c WHERE c.is_active AND (${cond})
        ORDER BY (SELECT MAX(i.created_at) FROM sale_invoices i WHERE i.customer_id = c.id) DESC NULLS LAST, c.name
        LIMIT 8`,
@@ -108,7 +108,6 @@ router.get('/search', async (req, res, next) => {
     res.json({
       results: rows.map((r) => ({
         ...r,
-        available_credit: Math.max(0, money(r.credit_limit) - money(r.balance)),
         refills: due.filter((d) => d.customer_id === r.id).slice(0, 6)
           .map((d) => ({ medicine_id: d.medicine_id, name: d.medicine_name, days_overdue: d.days_overdue }))
       }))
@@ -142,6 +141,40 @@ router.get('/refills', async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------- إضافة سريعة من الكاشير (JSON)
+// لو التليفون مسجّل قبل كده بيرجّع العميل الموجود (existing: true) بدل ما يكرّره.
+router.post('/quick', async (req, res, next) => {
+  try {
+    const name = cleanText(req.body.name, 120);
+    const phone = cleanText(req.body.phone, 30);
+    if (!name) return res.status(400).json({ error: 'اسم العميل مطلوب' });
+    if (phone && digitsOf(phone).length < 7) return res.status(400).json({ error: 'رقم التليفون غير صحيح' });
+    const pick = (r) => ({ id: r.id, name: r.name, phone: r.phone, balance: money(r.balance), refills: [] });
+    if (phone) {
+      const dup = await queryOne(`SELECT id, name, phone, balance, is_active FROM customers WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [digitsOf(phone)]);
+      if (dup) {
+        if (!dup.is_active) return res.status(409).json({ error: 'العميل ده موقوف' });
+        return res.json({ customer: pick(dup), existing: true });
+      }
+    }
+    let row;
+    try {
+      row = await queryOne(
+        `INSERT INTO customers (name, phone, created_by) VALUES ($1, $2, $3)
+         RETURNING id, name, phone, balance`,
+        [name, phone, req.session.userId]
+      );
+    } catch (err) {
+      if (err.code === '23505') return res.status(409).json({ error: 'رقم التليفون ده مسجّل قبل كده' });
+      throw err;
+    }
+    await logActivity(req, { action: 'إضافة عميل', entityType: 'customer', entityId: row.id, details: { customer_name: name, from: 'pos' } });
+    res.json({ customer: pick(row), existing: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------------------------------------------------------------- إضافة عميل
 router.post('/', async (req, res, next) => {
   try {
@@ -149,12 +182,11 @@ router.post('/', async (req, res, next) => {
     if (!name) return res.redirect('/customers?err=' + encodeURIComponent('اسم العميل مطلوب'));
     const phone = cleanText(req.body.phone, 30);
     if (phone && digitsOf(phone).length < 7) return res.redirect('/customers?err=' + encodeURIComponent('رقم التليفون غير صحيح'));
-    const limit = isAdmin(req) ? Math.max(money(req.body.credit_limit), 0) : 0;
     try {
       const row = await queryOne(
-        `INSERT INTO customers (name, phone, address, notes, credit_limit, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [name, phone, cleanText(req.body.address), cleanText(req.body.notes, 500), limit, req.session.userId]
+        `INSERT INTO customers (name, phone, address, notes, created_by)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [name, phone, cleanText(req.body.address), cleanText(req.body.notes, 500), req.session.userId]
       );
       await logActivity(req, { action: 'إضافة عميل', entityType: 'customer', entityId: row.id, details: { customer_name: name } });
       return res.redirect(`/customers/${row.id}?msg=saved`);
@@ -248,8 +280,6 @@ router.post('/:id/update', async (req, res, next) => {
     const sets = ['name = $1', 'phone = $2', 'address = $3', 'notes = $4'];
     const params = [name, phone, cleanText(req.body.address), cleanText(req.body.notes, 500)];
     if (isAdmin(req)) {
-      params.push(Math.max(money(req.body.credit_limit), 0));
-      sets.push(`credit_limit = $${params.length}`);
       params.push(req.body.is_active === 'on');
       sets.push(`is_active = $${params.length}`);
     }
