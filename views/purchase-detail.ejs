@@ -14,13 +14,14 @@
         <h1>فاتورة شراء #<%= invoice.id %> <% if (invoice.status === 'cancelled') { %><span class="badge badge-ignored">ملغاة</span><% } %></h1>
         <p><%= invoice.supplier_name %> — رقم فاتورة المورد: <%= invoice.invoice_number || '—' %></p>
       </div>
-      <a href="/purchases" class="btn-ghost-sm">← رجوع للفواتير</a>
+      <div style="display:flex; gap:8px;"><a href="/purchases/<%= invoice.id %>/print" target="_blank" class="btn-ghost-sm">🖨️ طباعة الفاتورة</a><a href="/purchases" class="btn-ghost-sm">← رجوع للفواتير</a></div>
     </div>
 
     <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
     <% if (ok) { %><div class="alert alert-success"><%= ok %></div><% } %>
 
     <div class="stat-grid">
+      <% if (Number(invoice.discount_percent) > 0) { %><div class="stat-card"><div class="label">الخصم</div><div class="value mono"><%= Number(invoice.discount_percent) %>%</div></div><% } %>
       <div class="stat-card"><div class="label">الإجمالي</div><div class="value mono"><%= Number(invoice.total_amount).toFixed(2) %> ج.م</div></div>
       <div class="stat-card"><div class="label">المدفوع</div><div class="value mono"><%= Number(invoice.paid_amount).toFixed(2) %> ج.م</div></div>
       <div class="stat-card"><div class="label">المتبقي</div><div class="value err mono"><%= invoice.status === 'cancelled' ? '—' : Number(invoice.remaining).toFixed(2) + ' ج.م' %></div></div>

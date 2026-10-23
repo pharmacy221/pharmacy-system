@@ -26,6 +26,24 @@ describe('فواتير الشراء وحسابات الموردين', { skip: T.
   });
   after(async () => { if (db) await db.drop(); });
 
+  it('خصم الطلبية: بيتطبق على الإجمالي وتكلفة الحبة، والإجمالي قبل الخصم محفوظ', async () => {
+    const m = await T.addMedicine(db, { ups: 10, spb: 3 }); // العلبة = 30 حبة
+    const r = await db.q1(
+      `SELECT create_purchase_invoice($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) AS id`,
+      [sup, null, null, null, null, T.ADMIN, 'admin',
+       JSON.stringify([{ medicine_id: m, unit: 'box', quantity: 2, cost: 100, expiry_date: await future(365) }]), 0, 'cash', null, 10]);
+    const i = await inv(r.id);
+    assert.equal(Number(i.discount_percent), 10);
+    assert.equal(Number(i.subtotal_amount), 200);
+    assert.equal(Number(i.total_amount), 180);
+    const it = await db.q1('SELECT * FROM purchase_invoice_items WHERE invoice_id = $1', [r.id]);
+    assert.equal(Number(it.cost_price_unit), 3);   // 100 * 0.9 / 30
+    await rejects(db.q1(
+      `SELECT create_purchase_invoice($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) AS id`,
+      [sup, null, null, null, null, T.ADMIN, 'admin',
+       JSON.stringify([{ medicine_id: m, unit: 'box', quantity: 1, cost: 100, expiry_date: await future(365) }]), 0, 'cash', null, 120]), /الخصم/);
+  });
+
   it('فاتورة بالعلبة: تحويل للحبة، تشغيلة، مخزون، حركة، وإجمالي صحيح', async () => {
     const m = await T.addMedicine(db, { ups: 10, spb: 3 }); // العلبة = 30 حبة
     const id = await create({ number: 'INV-1', items: [{ medicine_id: m, unit: 'box', quantity: 2, cost: 100, expiry_date: await future(365), batch_number: 'L1' }] });

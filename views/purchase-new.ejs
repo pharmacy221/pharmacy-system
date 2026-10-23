@@ -38,6 +38,7 @@
           <div class="field"><label>رقم فاتورة المورد</label><input type="text" name="invoice_number" maxlength="80" value="<%= form.invoice_number || '' %>"></div>
           <div class="field"><label>تاريخ الفاتورة</label><input type="date" name="invoice_date" value="<%= form.invoice_date || today %>"></div>
           <div class="field"><label>ميعاد الاستحقاق (للآجل)</label><input type="date" name="due_date" value="<%= form.due_date || '' %>"></div>
+          <div class="field"><label>نسبة الخصم على الطلبية %</label><input type="number" name="discount_percent" id="disc" min="0" max="100" step="0.01" value="<%= form.discount_percent || '0' %>"></div>
         </div>
       </div>
 
@@ -114,8 +115,9 @@
 
   function recalc() {
     var total = 0;
+    var d = Math.min(Math.max(parseFloat(document.getElementById('disc').value) || 0, 0), 100);
     read().forEach(function (r) {
-      var line = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0);
+      var line = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0) * (1 - d / 100);
       r._tr.querySelector('.f-line').textContent = line.toFixed(2);
       total += line;
     });
@@ -131,6 +133,7 @@
     }
   });
   document.getElementById('paid').addEventListener('input', recalc);
+  document.getElementById('disc').addEventListener('input', recalc);
   document.getElementById('addLine').addEventListener('click', function () { addLine().querySelector('.f-med').focus(); });
 
   document.getElementById('piForm').addEventListener('submit', function (e) {
@@ -141,6 +144,19 @@
     document.getElementById('itemsJson').value = JSON.stringify(rows.map(function (r) { delete r._tr; return r; }));
     document.getElementById('submitBtn').disabled = true; // منع الضغط المزدوج
   });
+
+  // قارئ الباركود: يضيف الصنف مباشرة (باركود أو سيريال)
+  window.onBarcodeScan = function (code) {
+    fetch('/purchases/api/medicines?q=' + encodeURIComponent(code), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!(d.exact && d.results.length)) { alert('الباركود/السيريال ' + code + ' غير مسجل'); return; }
+      var m = d.results[0]; BY_ID[m.id] = BY_ID[m.id] || { id: m.id, name: m.name, ups: m.ups, spb: m.spb };
+      var trs = tbody.querySelectorAll('tr'), last = trs[trs.length - 1];
+      if (last && !last.querySelector('.f-med').value) { last.querySelector('.f-med').value = m.name + ' #' + m.id; last.querySelector('.f-unit').value = m.default_unit; last.querySelector('.f-qty').focus(); }
+      else { var tr = addLine({ medicine_id: m.id, unit: m.default_unit }); tr.querySelector('.f-qty').focus(); }
+      recalc();
+    });
+    return true;
+  };
 
   (saved.length ? saved : [{}]).forEach(addLine);
   recalc();

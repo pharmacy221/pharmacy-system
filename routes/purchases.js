@@ -4,6 +4,7 @@ const router = express.Router();
 const { query, queryOne } = require('../db');
 const { requireLogin, requireRole } = require('../middleware/auth');
 const { BusinessError, isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
+const { saleLevels } = require('../lib/drug-form');
 
 router.use(requireLogin, requireRole('admin', 'pharmacist'));
 const adminOnly = requireRole('admin');
@@ -61,6 +62,62 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+// ============ بحث الأصناف والموردين (لصفحة التشغيلات/الطلبيات) ============
+// توحيد الحروف العربية عشان البحث ميتأثرش بالهمزات والتاء المربوطة
+const normText = (t) => String(t || '').toLowerCase()
+  .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[\u064B-\u0652\u0640]/g, '');
+const SQL_NORM = (expr) => `translate(lower(${expr}), 'أإآةى', 'اااهي')`;
+const escLike = (t) => t.replace(/[\\%_]/g, (c) => '\\' + c);
+
+// الأصناف: بالاسم / المادة الفعالة / الشركة المصنّعة / الباركود / السيريال (كل كلمة في أي مكان وبأي ترتيب)
+router.get('/api/medicines', async (req, res, next) => {
+  try {
+    const raw = String(req.query.q || '').trim();
+    if (!raw) return res.json({ results: [] });
+    const tokens = normText(raw).split(/\s+/).filter(Boolean).slice(0, 8);
+    const hay = SQL_NORM(`concat_ws(' ', name, generic_name, manufacturer, barcode, serial_number)`);
+    const params = [raw];
+    const where = tokens.map((t) => { params.push(`%${escLike(t)}%`); return `${hay} LIKE $${params.length}`; });
+    params.push(`${escLike(normText(raw))}%`);
+    const iPrefix = params.length;
+    const rows = await query(
+      `SELECT id, name, generic_name, manufacturer, barcode, serial_number, form_kind, dosage_form,
+              units_per_strip, strips_per_box, stock_units
+       FROM medicines
+       WHERE is_active = true AND (barcode = $1 OR serial_number = $1 OR (${where.join(' AND ')}))
+       ORDER BY (barcode = $1 OR serial_number = $1) DESC, (${SQL_NORM('name')} LIKE $${iPrefix}) DESC, lower(name)
+       LIMIT 30`, params);
+    res.json({
+      exact: rows.length > 0 && (rows[0].barcode === raw || rows[0].serial_number === raw),
+      results: rows.map((m) => {
+        const lv = saleLevels(m);
+        const big = lv.levels[lv.levels.length - 1];   // أكبر وحدة: علبة للحبوب/الفوار، أو وحدة الصنف (حقنة/شراب...)
+        return {
+          id: m.id, name: m.name, manufacturer: m.manufacturer, barcode: m.barcode, serial_number: m.serial_number,
+          form: lv.formLabel, ups: m.units_per_strip, spb: m.strips_per_box, stock_units: m.stock_units,
+          levels: lv.levels.map((l) => ({ key: l.key, label: l.label, qty: l.qty })), default_unit: big.key, default_label: big.label
+        };
+      })
+    });
+  } catch (err) { next(err); }
+});
+
+// الموردين: بالاسم أو الشركة اللي المندوب بيمثّلها أو اسم المندوب أو التليفون
+router.get('/api/suppliers', async (req, res, next) => {
+  try {
+    const raw = String(req.query.q || '').trim();
+    const tokens = normText(raw).split(/\s+/).filter(Boolean).slice(0, 6);
+    const hay = SQL_NORM(`concat_ws(' ', name, company, rep_name, phone)`);
+    const params = [];
+    const where = tokens.map((t) => { params.push(`%${escLike(t)}%`); return `${hay} LIKE $${params.length}`; });
+    const rows = await query(
+      `SELECT id, name, company, rep_name, phone FROM suppliers ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY lower(name) LIMIT 30`, params);
+    res.json({ results: rows });
+  } catch (err) { next(err); }
+});
+
 async function renderNew(res, req, extra = {}) {
   const [suppliers, medicines, today] = await Promise.all([
     query('SELECT id, name FROM suppliers ORDER BY name'),
@@ -104,11 +161,13 @@ router.post('/create', async (req, res, next) => {
     if (b.due_date && !dueDate) throw new BusinessError('تاريخ الاستحقاق غير صحيح');
     const paid = parseMoney(b.paid_amount, 'المبلغ المدفوع');
     const method = ['cash', 'bank', 'other'].includes(b.method) ? b.method : 'cash';
+    const discount = b.discount_percent === undefined || String(b.discount_percent).trim() === '' ? 0 : Number(b.discount_percent);
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100) throw new BusinessError('نسبة الخصم لازم تكون بين 0 و 100');
 
     const row = await queryOne(
-      `SELECT create_purchase_invoice($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11) AS id`,
+      `SELECT create_purchase_invoice($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) AS id`,
       [supplierId, (b.invoice_number || '').slice(0, 80), invoiceDate, dueDate, (b.notes || '').slice(0, 500),
-       req.session.userId, req.session.username, JSON.stringify(items), paid, method, cleanKey(b.idempotency_key)]
+       req.session.userId, req.session.username, JSON.stringify(items), paid, method, cleanKey(b.idempotency_key), discount]
     );
     res.redirect('/purchases/' + row.id);
   } catch (err) {
@@ -124,6 +183,25 @@ router.post('/create', async (req, res, next) => {
     }
     next(err);
   }
+});
+
+
+// ============ طباعة فاتورة الطلبية ============
+router.get('/:id/print', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).render('error', { code: 404, message: 'الفاتورة غير موجودة' });
+    const invoice = await queryOne(`
+      SELECT pi.*, s.name AS supplier_name, s.company AS supplier_company, s.rep_name, s.phone AS supplier_phone,
+             u.full_name AS created_by_name, (pi.total_amount - pi.paid_amount) AS remaining
+      FROM purchase_invoices pi JOIN suppliers s ON s.id = pi.supplier_id LEFT JOIN users u ON u.id = pi.created_by
+      WHERE pi.id = $1`, [id]);
+    if (!invoice) return res.status(404).render('error', { code: 404, message: 'الفاتورة غير موجودة' });
+    const items = await query(
+      `SELECT i.*, m.name AS medicine_name, m.serial_number, m.barcode, m.form_kind, m.units_per_strip, m.strips_per_box
+       FROM purchase_invoice_items i JOIN medicines m ON m.id = i.medicine_id WHERE i.invoice_id = $1 ORDER BY i.id`, [id]);
+    res.render('purchase-print', { invoice, items, unitLabel: require('../lib/drug-form').unitLabel });
+  } catch (err) { next(err); }
 });
 
 // ============ تفاصيل الفاتورة ============

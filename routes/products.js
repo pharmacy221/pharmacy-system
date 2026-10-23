@@ -4,7 +4,7 @@ const express = require('express');
 const { query, queryOne, getClient } = require('../db');
 const { requireLogin, requireAdmin, requireRole } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
-const { FORMS, FORM_ORDER, saleLevels } = require('../lib/drug-form');
+const { FORMS, FORM_ORDER, saleLevels, singleLabel } = require('../lib/drug-form');
 const { BusinessError, isBusinessError, statusFor, userMessage } = require('../lib/errors');
 
 const router = express.Router();
@@ -368,20 +368,46 @@ router.post('/:id/delete', requireAdmin, async (req, res, next) => {
 // ============ التشغيلات (Batches) + تنبيهات الصلاحية ============
 router.get('/batches', async (req, res, next) => {
   try {
-    const medicines = await query('SELECT id, name, units_per_strip, strips_per_box FROM medicines WHERE is_active = true ORDER BY lower(name)');
-    const suppliers = await query('SELECT id, name FROM suppliers ORDER BY lower(name)');
+    const q = String(req.query.q || '').trim();
+    const tokens = normText(q).split(/\s+/).filter(Boolean).slice(0, 8);
 
+    // بحث التشغيلات: اسم الصنف / باركود / سيريال / رقم التشغيلة / المورد / الشركة (كل كلمة في أي مكان)
+    const bParams = [];
+    const bWhere = ['b.quantity_units > 0'];
+    const bHay = SQL_NORM(`concat_ws(' ', m.name, m.generic_name, m.barcode, m.serial_number, m.manufacturer, b.batch_number, s.name, s.company)`);
+    tokens.forEach((t) => { bParams.push(`%${escLike(t)}%`); bWhere.push(`${bHay} LIKE $${bParams.length}`); });
     const batches = await query(`
-      SELECT b.*, m.name AS medicine_name, s.name AS supplier_name,
+      SELECT b.*, m.name AS medicine_name, m.barcode, m.serial_number, m.form_kind, m.units_per_strip, m.strips_per_box,
+             s.name AS supplier_name, s.company AS supplier_company,
              (b.expiry_date - pharmacy_today()) AS days_left
       FROM batches b
       JOIN medicines m ON m.id = b.medicine_id
       LEFT JOIN suppliers s ON s.id = b.supplier_id
-      WHERE b.quantity_units > 0
+      WHERE ${bWhere.join(' AND ')}
       ORDER BY b.expiry_date ASC
-    `);
+      LIMIT 500
+    `, bParams);
 
-    res.render('batches', { medicines, suppliers, batches, active: 'batches', error: null });
+    // الطلبيات (فواتير الشراء): آخر 40 طلبية، وبتتفلتر بنفس البحث (المورد / الشركة / رقم الفاتورة)
+    const oParams = [];
+    const oWhere = [];
+    const oHay = SQL_NORM(`concat_ws(' ', s.name, s.company, s.rep_name, pi.invoice_number)`);
+    tokens.forEach((t) => { oParams.push(`%${escLike(t)}%`); oWhere.push(`${oHay} LIKE $${oParams.length}`); });
+    const orders = await query(`
+      SELECT pi.id, pi.invoice_number, pi.invoice_date, pi.status, pi.discount_percent, pi.total_amount, pi.paid_amount,
+             s.name AS supplier_name, s.company AS supplier_company,
+             (SELECT COUNT(*)::int FROM purchase_invoice_items i WHERE i.invoice_id = pi.id) AS items_count
+      FROM purchase_invoices pi JOIN suppliers s ON s.id = pi.supplier_id
+      ${oWhere.length ? 'WHERE ' + oWhere.join(' AND ') : ''}
+      ORDER BY pi.id DESC LIMIT 40
+    `, oParams);
+
+    const today = (await queryOne(`SELECT to_char(pharmacy_today(), 'YYYY-MM-DD') AS today`)).today;
+    res.render('batches', {
+      batches, orders, q, today, active: 'batches', error: req.query.error || null,
+      canReceive: ['admin', 'pharmacist'].includes(req.session.role), singleLabel,
+      idempotencyKey: `pi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    });
   } catch (err) {
     next(err);
   }

@@ -28,7 +28,7 @@
       <form method="GET" action="/drug-lookup" style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
         <div class="field" style="flex:1; min-width:240px;">
           <label>اسم الدواء أو المادة الفعالة</label>
-          <input type="text" name="q" value="<%= q %>" placeholder="مثال: بنادول، panadol 500، paracetamol، أوجمنتين..." autofocus required>
+          <input type="text" name="q" data-scan-target value="<%= q %>" placeholder="مثال: بنادول، panadol 500، paracetamol، أوجمنتين..." autofocus required>
         </div>
         <button type="submit" class="btn">بحث</button>
       </form>

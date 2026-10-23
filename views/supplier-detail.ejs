@@ -94,6 +94,8 @@
       <div class="card">
         <h2>بيانات المورد</h2>
         <div class="field"><label>الهاتف</label><div><%= supplier.phone || '-' %></div></div>
+        <div class="field"><label>الشركة</label><div><%= supplier.company || '-' %></div></div>
+        <div class="field"><label>المندوب</label><div><%= supplier.rep_name || '-' %></div></div>
         <div class="field"><label>العنوان</label><div><%= supplier.address || '-' %></div></div>
         <div class="field"><label>ملاحظات</label><div><%= supplier.notes || '-' %></div></div>
 
@@ -114,6 +116,14 @@
           <div class="field">
             <label>الهاتف</label>
             <input type="text" name="phone" value="<%= supplier.phone || '' %>">
+          </div>
+          <div class="field">
+            <label>الشركة اللي المندوب بيمثّلها</label>
+            <input type="text" name="company" value="<%= supplier.company || '' %>">
+          </div>
+          <div class="field">
+            <label>اسم المندوب</label>
+            <input type="text" name="rep_name" value="<%= supplier.rep_name || '' %>">
           </div>
           <div class="field">
             <label>العنوان</label>

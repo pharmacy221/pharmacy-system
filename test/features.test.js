@@ -228,9 +228,9 @@ describe('الشاشات والـ routes الجديدة', { skip: T.SKIP }, () =
     });
 
     it('الكاشير مينفعش يوقف عميل، والأدمن يقدر', async () => {
-      const r = await req('POST', '/customers', { user: T.CASHIER, form: { name: 'حاول', phone: '01777777777' } });
+      const r = await req('POST', '/customers', { user: T.CASHIER, form: { name: 'حاول', phone: '01077777777' } });
       assert.equal(r.status, 302);
-      const c = await dbCust('01777777777');
+      const c = await dbCust('01077777777');
       await req('POST', `/customers/${c.id}/update`, { user: T.CASHIER, form: { name: 'حاول', is_active: '' } });
       assert.equal((await db.q1('SELECT is_active FROM customers WHERE id = $1', [c.id])).is_active, true);
       await req('POST', `/customers/${c.id}/update`, { user: T.ADMIN, form: { name: 'حاول' } });
@@ -238,11 +238,11 @@ describe('الشاشات والـ routes الجديدة', { skip: T.SKIP }, () =
     });
 
     it('تليفون مكرر أو غير صحيح عند الإضافة: رسالة خطأ', async () => {
-      await req('POST', '/customers', { user: T.ADMIN, form: { name: 'أول', phone: '01888888888' } });
-      const dup = await req('POST', '/customers', { user: T.ADMIN, form: { name: 'تاني', phone: '0188-888-8888' } });
+      await req('POST', '/customers', { user: T.ADMIN, form: { name: 'أول', phone: '01088888888' } });
+      const dup = await req('POST', '/customers', { user: T.ADMIN, form: { name: 'تاني', phone: '0108-888-8888' } });
       assert.ok(decodeURIComponent(dup.location).includes('مسجّل قبل كده'));
       const bad = await req('POST', '/customers', { user: T.ADMIN, form: { name: 'تالت', phone: '12' } });
-      assert.ok(decodeURIComponent(bad.location).includes('غير صحيح'));
+      assert.ok(decodeURIComponent(bad.location).includes('11 رقم'));
     });
   });
 

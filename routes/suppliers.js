@@ -14,7 +14,7 @@ router.get('/', async (req, res, next) => {
     const cols = `s.*, COALESCE(b.balance_due, 0) AS balance_due, COALESCE(b.overdue_due, 0) AS overdue_due`;
     if (q && q.trim()) {
       const term = `%${q.trim()}%`;
-      suppliers = await query(`SELECT ${cols} FROM suppliers s LEFT JOIN v_supplier_balances b ON b.supplier_id = s.id WHERE s.name ILIKE $1 OR s.phone ILIKE $1 ORDER BY s.id DESC`, [term]);
+      suppliers = await query(`SELECT ${cols} FROM suppliers s LEFT JOIN v_supplier_balances b ON b.supplier_id = s.id WHERE s.name ILIKE $1 OR s.phone ILIKE $1 OR s.company ILIKE $1 OR s.rep_name ILIKE $1 ORDER BY s.id DESC`, [term]);
     } else {
       suppliers = await query(`SELECT ${cols} FROM suppliers s LEFT JOIN v_supplier_balances b ON b.supplier_id = s.id ORDER BY s.id DESC`);
     }
@@ -25,12 +25,12 @@ router.get('/', async (req, res, next) => {
 });
 
 router.post('/add', async (req, res, next) => {
-  const { name, phone, address, notes } = req.body;
+  const { name, phone, address, notes, company, rep_name } = req.body;
   try {
     if (!name || !name.trim()) return res.status(400).send('اسم المورد مطلوب');
     await query(
-      `INSERT INTO suppliers (name, phone, address, notes) VALUES ($1, $2, $3, $4)`,
-      [name.trim(), phone || null, address || null, notes || null]
+      `INSERT INTO suppliers (name, phone, address, notes, company, rep_name) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [name.trim(), phone || null, address || null, notes || null, (company || '').trim() || null, (rep_name || '').trim() || null]
     );
     await logActivity(req, { action: 'إضافة مورد', entityType: 'supplier', details: { supplier_name: name.trim() } });
     res.redirect('/suppliers');
@@ -40,12 +40,12 @@ router.post('/add', async (req, res, next) => {
 });
 
 router.post('/:id/update', async (req, res, next) => {
-  const { name, phone, address, notes } = req.body;
+  const { name, phone, address, notes, company, rep_name } = req.body;
   try {
     if (!name || !name.trim()) return res.status(400).send('اسم المورد مطلوب');
     await query(
-      `UPDATE suppliers SET name = $1, phone = $2, address = $3, notes = $4 WHERE id = $5`,
-      [name.trim(), phone || null, address || null, notes || null, req.params.id]
+      `UPDATE suppliers SET name = $1, phone = $2, address = $3, notes = $4, company = $5, rep_name = $6 WHERE id = $7`,
+      [name.trim(), phone || null, address || null, notes || null, (company || '').trim() || null, (rep_name || '').trim() || null, req.params.id]
     );
     res.redirect('/suppliers/' + req.params.id);
   } catch (err) {

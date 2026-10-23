@@ -7,7 +7,7 @@ const { requireLogin } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
 const { saleLevels } = require('../lib/drug-form');
 const { BusinessError, isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
-const { digitsOf } = require('../lib/phone');
+const { digitsOf, normalizeMobile, nameHasDigits } = require('../lib/phone');
 
 const router = express.Router();
 router.use(requireLogin);
@@ -80,8 +80,8 @@ router.get('/search', async (req, res, next) => {
     const rows = await query(
       `SELECT * FROM medicines
        WHERE is_active = true ${instock ? `AND ${SELLABLE_EXISTS}` : ''}
-         AND (barcode = $1 OR (${conds.join(' AND ')}))
-       ORDER BY (barcode = $1) DESC, (${SELLABLE_EXISTS}) DESC, (name ILIKE ${prefix}) DESC, lower(name)
+         AND (barcode = $1 OR serial_number = $1 OR (${conds.join(' AND ')}))
+       ORDER BY (barcode = $1 OR serial_number = $1) DESC, (${SELLABLE_EXISTS}) DESC, (name ILIKE ${prefix}) DESC, lower(name)
        LIMIT 40`,
       params
     );
@@ -114,7 +114,7 @@ router.get('/lookup', async (req, res, next) => {
     const barcode = (req.query.barcode || '').trim();
     if (!barcode) return res.json({ found: false });
 
-    const medicine = await queryOne('SELECT * FROM medicines WHERE barcode = $1 AND is_active = true', [barcode]);
+    const medicine = await queryOne('SELECT * FROM medicines WHERE (barcode = $1 OR serial_number = $1) AND is_active = true ORDER BY (barcode = $1) DESC LIMIT 1', [barcode]);
     if (!medicine) return res.json({ found: false });
 
     const [sellable] = await withSellableStock([medicine]);
@@ -171,7 +171,10 @@ function validateControlled(c) {
 // تحديد العميل داخل نفس الـ transaction: id صريح، أو تليفون (يتلاقي أو يتسجّل تلقائيًا)، أو بدون عميل
 async function resolveCustomer(client, rawId, rawName, rawPhone, userId) {
   const name = rawName && String(rawName).trim() ? String(rawName).trim().slice(0, 120) : null;
-  const phone = rawPhone && String(rawPhone).trim() ? String(rawPhone).trim().slice(0, 30) : null;
+  if (name && nameHasDigits(name)) throw new BusinessError('اسم العميل مينفعش يحتوي على أرقام');
+  const hasPhone = rawPhone && String(rawPhone).trim();
+  const phone = hasPhone ? normalizeMobile(rawPhone) : null;
+  if (hasPhone && !phone) throw new BusinessError('رقم موبايل العميل لازم يكون 11 رقم صحيح (يبدأ بـ 010 أو 011 أو 012 أو 015) وأرقام فقط');
   const id = parseInt(rawId, 10);
   if (Number.isInteger(id) && id > 0) {
     const r = await client.query('SELECT id, name, phone, is_active FROM customers WHERE id = $1', [id]);
@@ -187,7 +190,7 @@ async function resolveCustomer(client, rawId, rawName, rawPhone, userId) {
         `INSERT INTO customers (name, phone, created_by) VALUES ($1, $2, $3)
          ON CONFLICT ((regexp_replace(phone, '\\D', '', 'g'))) WHERE phone IS NOT NULL AND regexp_replace(phone, '\\D', '', 'g') <> '' DO NOTHING
          RETURNING id, name, phone, is_active`,
-        [name || 'عميل ' + phone, phone, userId]
+        [name || 'عميل جديد', phone, userId]
       );
       if (!r.rows[0]) r = await client.query(`SELECT id, name, phone, is_active FROM customers WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [digits]);
     }

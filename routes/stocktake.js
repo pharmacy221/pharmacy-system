@@ -124,7 +124,7 @@ router.post('/:id/scan', async (req, res) => {
        SET counted_units = COALESCE(si.counted_units, 0) + $3, counted_by = $4, counted_at = now()
        FROM stocktakes s, medicines m
        WHERE si.stocktake_id = $1 AND s.id = si.stocktake_id AND s.status = 'open'
-         AND m.id = si.medicine_id AND m.barcode = $2
+         AND m.id = si.medicine_id AND (m.barcode = $2 OR m.serial_number = $2)
        RETURNING si.medicine_id, si.counted_units, m.name`,
       [id, barcode, add, req.session.userId]
     );

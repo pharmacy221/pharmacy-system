@@ -33,7 +33,7 @@
     <% if (isOpen) { %>
       <div class="scan-banner no-print">
         <strong>📷 مسح الباركود</strong>
-        <input type="text" id="scanInput" placeholder="امسح الباركود هنا (كل مسحة = +1)" autocomplete="off" dir="ltr">
+        <input type="text" id="scanInput" data-scan-target data-scan-submit="no" placeholder="امسح الباركود هنا (كل مسحة = +1)" autocomplete="off" dir="ltr">
         <span class="scan-flash" id="scanFlash"></span>
       </div>
     <% } %>

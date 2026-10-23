@@ -76,8 +76,8 @@
       <div class="card">
         <h2>إضافة عميل</h2>
         <form action="/customers" method="POST">
-          <div class="field"><label>الاسم *</label><input type="text" name="name" required maxlength="120"></div>
-          <div class="field"><label>التليفون (واتساب)</label><input type="text" name="phone" placeholder="01xxxxxxxxx" dir="ltr"></div>
+          <div class="field"><label>الاسم *</label><input type="text" name="name" data-input="name" required maxlength="120"></div>
+          <div class="field"><label>التليفون (واتساب)</label><input type="text" name="phone" data-input="phone" placeholder="01xxxxxxxxx" dir="ltr"></div>
           <div class="field"><label>العنوان</label><input type="text" name="address" maxlength="200"></div>
           <div class="field"><label>ملاحظات</label><textarea name="notes" rows="2" maxlength="500"></textarea></div>
           <button class="btn" type="submit">حفظ العميل</button>

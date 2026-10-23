@@ -7,7 +7,10 @@ const { query, queryOne } = require('../db');
 const { requireLogin, requireRole } = require('../middleware/auth');
 const { logActivity } = require('../lib/activity-log');
 const { isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
-const { digitsOf, waLink } = require('../lib/phone');
+const { digitsOf, waLink, normalizeMobile, nameHasDigits } = require('../lib/phone');
+
+const PHONE_ERR = 'رقم الموبايل لازم يكون 11 رقم صحيح (يبدأ بـ 010 أو 011 أو 012 أو 015) وأرقام فقط';
+const NAME_ERR = 'الاسم مينفعش يحتوي على أرقام';
 const { dueRefills, suggestedRefills } = require('../lib/refills');
 
 const router = express.Router();
@@ -146,9 +149,10 @@ router.get('/refills', async (req, res, next) => {
 router.post('/quick', async (req, res, next) => {
   try {
     const name = cleanText(req.body.name, 120);
-    const phone = cleanText(req.body.phone, 30);
     if (!name) return res.status(400).json({ error: 'اسم العميل مطلوب' });
-    if (phone && digitsOf(phone).length < 7) return res.status(400).json({ error: 'رقم التليفون غير صحيح' });
+    if (nameHasDigits(name)) return res.status(400).json({ error: NAME_ERR });
+    const phone = normalizeMobile(req.body.phone);
+    if (!phone) return res.status(400).json({ error: PHONE_ERR });
     const pick = (r) => ({ id: r.id, name: r.name, phone: r.phone, balance: money(r.balance), refills: [] });
     if (phone) {
       const dup = await queryOne(`SELECT id, name, phone, balance, is_active FROM customers WHERE regexp_replace(phone, '\\D', '', 'g') = $1`, [digitsOf(phone)]);
@@ -180,8 +184,10 @@ router.post('/', async (req, res, next) => {
   try {
     const name = cleanText(req.body.name, 120);
     if (!name) return res.redirect('/customers?err=' + encodeURIComponent('اسم العميل مطلوب'));
-    const phone = cleanText(req.body.phone, 30);
-    if (phone && digitsOf(phone).length < 7) return res.redirect('/customers?err=' + encodeURIComponent('رقم التليفون غير صحيح'));
+    if (nameHasDigits(name)) return res.redirect('/customers?err=' + encodeURIComponent(NAME_ERR));
+    const rawPhone = cleanText(req.body.phone, 30);
+    const phone = rawPhone ? normalizeMobile(rawPhone) : null;
+    if (rawPhone && !phone) return res.redirect('/customers?err=' + encodeURIComponent(PHONE_ERR));
     try {
       const row = await queryOne(
         `INSERT INTO customers (name, phone, address, notes, created_by)
@@ -274,8 +280,10 @@ router.post('/:id/update', async (req, res, next) => {
     const name = cleanText(req.body.name, 120);
     if (!id) return res.status(404).send('العميل غير موجود');
     if (!name) return back(res, id, { err: 'اسم العميل مطلوب' });
-    const phone = cleanText(req.body.phone, 30);
-    if (phone && digitsOf(phone).length < 7) return back(res, id, { err: 'رقم التليفون غير صحيح' });
+    if (nameHasDigits(name)) return back(res, id, { err: NAME_ERR });
+    const rawPhone = cleanText(req.body.phone, 30);
+    const phone = rawPhone ? normalizeMobile(rawPhone) : null;
+    if (rawPhone && !phone) return back(res, id, { err: PHONE_ERR });
 
     const sets = ['name = $1', 'phone = $2', 'address = $3', 'notes = $4'];
     const params = [name, phone, cleanText(req.body.address), cleanText(req.body.notes, 500)];

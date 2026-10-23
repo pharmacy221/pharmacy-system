@@ -1,107 +1,306 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <title>التشغيلات والصلاحية - <%= shopName %></title>
+  <title>التشغيلات والطلبيات - <%= shopName %></title>
   <%- include('partials/head') %>
+  <style>
+    .pi-lines td { padding: 6px 4px; vertical-align: top; }
+    .pi-lines input, .pi-lines select { min-width: 0; width: 100%; }
+    .pi-total { font-size: 20px; font-weight: 700; }
+    .dd-wrap { position: relative; }
+    .dd { position: absolute; inset-inline: 0; top: 100%; z-index: 30; background: var(--card, #fff); border: 1px solid var(--border, #cbd5e1);
+          border-radius: 8px; max-height: 320px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.15); display: none; }
+    .dd button { display: block; width: 100%; text-align: right; padding: 8px 12px; background: none; border: 0; border-bottom: 1px solid var(--border, #e2e8f0); cursor: pointer; font: inherit; color: inherit; }
+    .dd button:hover, .dd button.on { background: rgba(13,148,136,.12); }
+    .dd small { display: block; color: var(--text-muted); font-size: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(13,148,136,.15); font-weight: 600; }
+    .scan-msg { font-size: 13px; margin: 6px 0; min-height: 18px; }
+    .scan-msg.err { color: var(--danger); } .scan-msg.ok { color: var(--success, #16a34a); }
+    details.card > summary { cursor: pointer; font-size: 18px; font-weight: 700; }
+  </style>
 </head>
 <body>
   <% var active = 'batches' %>
   <%- include('partials/nav') %>
+  <%
+    function bigQty(b) {
+      var f = (parseInt(b.units_per_strip) || 1) * (parseInt(b.strips_per_box) || 1);
+      if (f > 1) {
+        var boxes = Math.floor(b.quantity_units / f), rest = b.quantity_units % f;
+        return boxes + ' علبة' + (rest ? ' + ' + rest + ' حبة' : '');
+      }
+      return b.quantity_units + ' ' + (b.form_kind ? singleLabel(b.form_kind) : 'حبة');
+    }
+  %>
 
   <div class="page">
     <div class="page-header">
       <div>
-        <h1>التشغيلات والصلاحية</h1>
-        <p>استلام بضاعة جديدة (Batches) وتتبّع تاريخ الصلاحية لكل تشغيلة</p>
+        <h1>التشغيلات والطلبيات</h1>
+        <p>استلام الطلبيات من الموردين (بالعلبة وبنسبة الخصم) وتتبّع الصلاحية لكل تشغيلة</p>
       </div>
     </div>
 
     <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
 
-    <div class="two-col">
+    <% if (canReceive) { %>
+    <form action="/purchases/create" method="POST" id="piForm" autocomplete="off">
+      <input type="hidden" name="idempotency_key" value="<%= idempotencyKey %>">
+      <input type="hidden" name="items_json" id="itemsJson">
+      <input type="hidden" name="supplier_id" id="supplierId">
+
       <div class="card">
-        <h2>التشغيلات الحالية (<%= batches.length %>)</h2>
-        <% if (batches.length === 0) { %>
-          <div class="empty-state">مفيش تشغيلات مسجلة لسه</div>
-        <% } else { %>
-          <table>
-            <thead>
-              <tr><th>الصنف</th><th>رقم التشغيلة</th><th>المورد</th><th>الصلاحية</th><th>المتبقي (حبة)</th></tr>
-            </thead>
-            <tbody>
-              <% batches.forEach(b => { %>
-                <tr>
-                  <td data-label="الصنف"><%= b.medicine_name %></td>
-                  <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="رقم التشغيلة"><%= b.batch_number || '—' %></td>
-                  <td style="color:var(--text-muted)" data-label="المورد"><%= b.supplier_name || '—' %></td>
-                  <td class="mono" data-label="الصلاحية"
-                      style="<%= b.days_left < 0 ? 'color:var(--danger)' : (b.days_left <= 90 ? 'color:var(--amber)' : '') %>">
-                    <%= new Date(b.expiry_date).toLocaleDateString('ar-EG') %>
-                    <% if (b.days_left < 0) { %><br><span class="badge badge-ignored">منتهية</span>
-                    <% } else if (b.days_left <= 90) { %><br><span class="badge badge-pending">باقي <%= b.days_left %> يوم</span><% } %>
-                  </td>
-                  <td class="mono" data-label="المتبقي (حبة)"><%= b.quantity_units %></td>
-                </tr>
-              <% }) %>
-            </tbody>
-          </table>
-        <% } %>
+        <h2>استلام طلبية جديدة</h2>
+        <div class="form-grid">
+          <div class="field dd-wrap">
+            <label>المورد * (بالاسم أو الشركة أو المندوب)</label>
+            <input type="text" id="supSearch" placeholder="اكتب اسم المورد أو الشركة...">
+            <div class="dd" id="supList"></div>
+            <div id="supChip" style="display:none; margin-top:6px;"></div>
+          </div>
+          <div class="field"><label>رقم فاتورة المورد</label><input type="text" name="invoice_number" maxlength="80"></div>
+          <div class="field"><label>تاريخ الطلبية</label><input type="date" name="invoice_date" value="<%= today %>"></div>
+          <div class="field"><label>ميعاد الاستحقاق (للآجل)</label><input type="date" name="due_date"></div>
+          <div class="field"><label>نسبة الخصم على الطلبية %</label><input type="number" name="discount_percent" id="disc" min="0" max="100" step="0.01" value="0"></div>
+        </div>
       </div>
 
       <div class="card">
-        <h2>استلام تشغيلة جديدة</h2>
-        <form action="/products/batches/add" method="POST">
-          <div class="field">
-            <label style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <span>الصنف</span>
-              <a href="/products" target="_blank" rel="noopener" class="btn-ghost-sm" style="white-space:nowrap;">
-                ➕ مش لاقي الصنف؟ أضف صنف جديد
-              </a>
-            </label>
-            <select name="medicine_id" id="batchMedicineSelect" required>
-              <option value="">-- اختر الصنف --</option>
-              <% medicines.forEach(m => { %>
-                <option value="<%= m.id %>"><%= m.name %></option>
-              <% }) %>
-            </select>
-          </div>
-          <div class="field">
-            <label>المورد (اختياري)</label>
-            <select name="supplier_id">
-              <option value="">-- بدون مورد --</option>
-              <% suppliers.forEach(s => { %>
-                <option value="<%= s.id %>"><%= s.name %></option>
-              <% }) %>
-            </select>
-          </div>
-          <div class="field">
-            <label>رقم التشغيلة (اختياري)</label>
-            <input type="text" name="batch_number" placeholder="مثال: LOT-2026-001">
-          </div>
-          <div class="field">
-            <label>تاريخ الصلاحية</label>
-            <input type="date" name="expiry_date" required>
-          </div>
-          <div class="form-grid">
-            <div class="field">
-              <label>الكمية المستلمة (بالحبة)</label>
-              <input type="number" name="received_units" min="1" required placeholder="مثال: 500">
-            </div>
-            <div class="field">
-              <label>سعر تكلفة الحبة</label>
-              <input type="number" step="0.01" name="cost_price_unit" required placeholder="0.00">
-            </div>
-          </div>
-          <button type="submit" class="btn">تسجيل استلام التشغيلة</button>
-        </form>
-        <p style="color:var(--text-muted); font-size:13px; margin-top:12px;">
-          عند التسجيل: مخزون الصنف ومتوسط سعر التكلفة بيتحدّثوا تلقائيًا، والبيع بعد كده بيتم بنظام "الأقرب صلاحية يتصرف الأول" (FEFO).
-        </p>
-        <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">
-          فتحنا صفحة إضافة الصنف في تاب جديد عشان الفورم اللي انت بتملاه هنا (المورد، الكمية، تاريخ الصلاحية...) ميضيعش. بعد ما تضيف الصنف، رجّع لتاب الصفحة دي واعمل تحديث (F5) عشان يظهرلك في القائمة.
-        </p>
+        <h2>أصناف الطلبية</h2>
+        <div class="field dd-wrap">
+          <label>ابحث عن صنف (اسم / شركة / سيريال / باركود) أو اسكن الباركود مباشرة</label>
+          <input type="text" id="itemSearch" data-scan-target data-scan-submit="no" placeholder="اكتب أو اسكن الباركود...">
+          <div class="dd" id="itemList"></div>
+        </div>
+        <div class="scan-msg" id="scanMsg"></div>
+        <table class="pi-lines">
+          <thead><tr><th style="width:24%">الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة (قبل الخصم)</th><th>الصلاحية</th><th>رقم التشغيلة</th><th>الإجمالي بعد الخصم</th><th></th></tr></thead>
+          <tbody id="lines"></tbody>
+        </table>
+        <div id="emptyLines" class="empty-state">لسه ما اتضافش أي صنف — ابحث أو اسكن الباركود</div>
+        <p style="color:var(--text-muted); font-size:13px;">الكمية بتتسجل بالوحدة الكبيرة حسب نوع الصنف (علبة للحبوب والفوار، وحدة الصنف للحقن والشراب...) — والنظام بيحوّلها للحبة تلقائيًا ويطبّق الخصم على تكلفة كل صنف.</p>
       </div>
+
+      <div class="card">
+        <div class="form-grid">
+          <div class="field"><label>الإجمالي قبل الخصم</label><div class="pi-total mono"><span id="subtotal">0.00</span> ج.م</div></div>
+          <div class="field"><label>قيمة الخصم</label><div class="pi-total mono">− <span id="discAmt">0.00</span> ج.م</div></div>
+          <div class="field"><label>الصافي</label><div class="pi-total mono"><span id="grand">0.00</span> ج.م</div></div>
+          <div class="field"><label>المدفوع الآن (0 = آجل)</label><input type="number" step="0.01" min="0" name="paid_amount" id="paid" value="0"></div>
+          <div class="field"><label>طريقة الدفع</label>
+            <select name="method"><option value="cash">نقدي</option><option value="bank">تحويل بنكي</option><option value="other">أخرى</option></select></div>
+          <div class="field"><label>المتبقي على المورد</label><div class="pi-total mono"><span id="remain">0.00</span> ج.م</div></div>
+        </div>
+        <div class="field"><label>ملاحظات</label><input type="text" name="notes" maxlength="500"></div>
+        <button type="submit" class="btn" id="submitBtn">تسجيل الطلبية واستلام البضاعة</button>
+        <span style="color:var(--text-muted); font-size:13px; margin-inline-start:8px;">بعد التسجيل تقدر تطبع الفاتورة من صفحة الطلبية.</span>
+      </div>
+    </form>
+    <% } %>
+
+    <form method="GET" action="/products/batches" class="card" style="display:flex; gap:8px; align-items:center;">
+      <input type="text" name="q" value="<%= q %>" placeholder="ابحث في الطلبيات والتشغيلات: اسم صنف / سيريال / باركود / مورد / شركة / رقم تشغيلة"
+             style="flex:1" <%- canReceive ? '' : 'data-scan-target' %>>
+      <button class="btn" type="submit">بحث</button>
+      <% if (q) { %><a class="btn-ghost-sm" href="/products/batches">مسح</a><% } %>
+    </form>
+
+    <div class="card">
+      <h2>الطلبيات (آخر <%= orders.length %>)</h2>
+      <% if (orders.length === 0) { %>
+        <div class="empty-state">مفيش طلبيات<%= q ? ' مطابقة للبحث' : ' مسجلة لسه' %></div>
+      <% } else { %>
+        <table>
+          <thead><tr><th>#</th><th>التاريخ</th><th>المورد</th><th>رقم فاتورة المورد</th><th>الأصناف</th><th>الخصم</th><th>الصافي</th><th>المتبقي</th><th></th></tr></thead>
+          <tbody>
+            <% orders.forEach(o => { %>
+              <tr>
+                <td class="mono" data-label="#"><a href="/purchases/<%= o.id %>"><%= o.id %></a></td>
+                <td class="mono" data-label="التاريخ"><%= new Date(o.invoice_date).toLocaleDateString('ar-EG') %></td>
+                <td data-label="المورد"><%= o.supplier_name %><% if (o.supplier_company) { %><br><span style="color:var(--text-muted); font-size:12px;"><%= o.supplier_company %></span><% } %></td>
+                <td class="mono" data-label="رقم فاتورة المورد"><%= o.invoice_number || '—' %></td>
+                <td class="mono" data-label="الأصناف"><%= o.items_count %></td>
+                <td class="mono" data-label="الخصم"><%= Number(o.discount_percent) > 0 ? Number(o.discount_percent) + '%' : '—' %></td>
+                <td class="mono" data-label="الصافي"><%= Number(o.total_amount).toFixed(2) %></td>
+                <td class="mono" data-label="المتبقي"><% if (o.status === 'cancelled') { %><span class="badge badge-ignored">ملغاة</span><% } else { %><%= (Number(o.total_amount) - Number(o.paid_amount)).toFixed(2) %><% } %></td>
+                <td data-label=""><a class="btn-ghost-sm" href="/purchases/<%= o.id %>/print" target="_blank">🖨️ طباعة</a></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <h2>التشغيلات الحالية (<%= batches.length %>)</h2>
+      <% if (batches.length === 0) { %>
+        <div class="empty-state">مفيش تشغيلات<%= q ? ' مطابقة للبحث' : ' مسجلة لسه' %></div>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr><th>الصنف</th><th>رقم التشغيلة</th><th>المورد</th><th>الصلاحية</th><th>المتبقي</th><th>الطلبية</th></tr>
+          </thead>
+          <tbody>
+            <% batches.forEach(b => { %>
+              <tr>
+                <td data-label="الصنف"><%= b.medicine_name %><% if (b.serial_number || b.barcode) { %><br><span class="mono" style="color:var(--text-muted); font-size:11px;"><%= b.serial_number ? 'سيريال: ' + b.serial_number : '' %><%= (b.serial_number && b.barcode) ? ' — ' : '' %><%= b.barcode ? 'باركود: ' + b.barcode : '' %></span><% } %></td>
+                <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="رقم التشغيلة"><%= b.batch_number || '—' %></td>
+                <td style="color:var(--text-muted)" data-label="المورد"><%= b.supplier_name || '—' %><% if (b.supplier_company) { %><br><span style="font-size:12px;"><%= b.supplier_company %></span><% } %></td>
+                <td class="mono" data-label="الصلاحية"
+                    style="<%= b.days_left < 0 ? 'color:var(--danger)' : (b.days_left <= 90 ? 'color:var(--amber)' : '') %>">
+                  <%= new Date(b.expiry_date).toLocaleDateString('ar-EG') %>
+                  <% if (b.days_left < 0) { %><br><span class="badge badge-ignored">منتهية</span>
+                  <% } else if (b.days_left <= 90) { %><br><span class="badge badge-pending">باقي <%= b.days_left %> يوم</span><% } %>
+                </td>
+                <td class="mono" data-label="المتبقي"><%= bigQty(b) %></td>
+                <td class="mono" data-label="الطلبية"><% if (b.purchase_invoice_id) { %><a href="/purchases/<%= b.purchase_invoice_id %>">#<%= b.purchase_invoice_id %></a><% } else { %>—<% } %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
     </div>
   </div>
+
+<% if (canReceive) { %>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var tbody = $('lines'), itemSearch = $('itemSearch'), itemList = $('itemList'), supSearch = $('supSearch'), supList = $('supList');
+  var MEDS = {};
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function debounce(fn, ms) { var t; return function () { var a = arguments, c = this; clearTimeout(t); t = setTimeout(function () { fn.apply(c, a); }, ms); }; }
+  function msg(text, type) { var m = $('scanMsg'); m.textContent = text || ''; m.className = 'scan-msg ' + (type || ''); }
+  function getJson(url) { return fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.json(); }); }
+
+  // ---------- قائمة منسدلة عامة (مع الأسهم و Enter) ----------
+  function Dropdown(input, list, fetcher, render, onPick) {
+    var items = [], idx = -1;
+    function draw() {
+      if (!items.length) { list.style.display = 'none'; return; }
+      list.innerHTML = items.map(function (it, i) { return '<button type="button" data-i="' + i + '" class="' + (i === idx ? 'on' : '') + '">' + render(it) + '</button>'; }).join('');
+      list.style.display = 'block';
+    }
+    var run = debounce(function () {
+      var q = input.value.trim();
+      fetcher(q).then(function (r) { items = r; idx = items.length ? 0 : -1; draw(); });
+    }, 200);
+    input.addEventListener('input', run);
+    input.addEventListener('focus', function () { if (input.value.trim() || input.getAttribute('data-open-empty')) run(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { idx = Math.min(idx + 1, items.length - 1); draw(); } }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { idx = Math.max(idx - 1, 0); draw(); } }
+      else if (e.key === 'Escape') { list.style.display = 'none'; }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (items.length && idx >= 0 && list.style.display === 'block') { pick(items[idx]); }
+        else if (input.value.trim()) { fetcher(input.value.trim()).then(function (r) { items = r; idx = 0; if (r.length === 1) pick(r[0]); else draw(); }); }
+      }
+    });
+    list.addEventListener('mousedown', function (e) { var b = e.target.closest('button'); if (b) { e.preventDefault(); pick(items[+b.getAttribute('data-i')]); } });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.dd-wrap')) list.style.display = 'none'; });
+    function pick(it) { list.style.display = 'none'; items = []; onPick(it); }
+  }
+
+  // ---------- المورد ----------
+  Dropdown(supSearch, supList,
+    function (q) { return getJson('/purchases/api/suppliers?q=' + encodeURIComponent(q)).then(function (d) { return d.results; }); },
+    function (s) { return esc(s.name) + '<small>' + esc([s.company, s.rep_name ? 'مندوب: ' + s.rep_name : '', s.phone].filter(Boolean).join(' — ')) + '</small>'; },
+    function (s) {
+      $('supplierId').value = s.id; supSearch.value = ''; supSearch.style.display = 'none';
+      var chip = $('supChip'); chip.style.display = 'block';
+      chip.innerHTML = '<span class="chip">' + esc(s.name) + (s.company ? ' — ' + esc(s.company) : '') + ' <a href="#" id="supChange" style="font-size:12px">تغيير</a></span>';
+      $('supChange').addEventListener('click', function (e) { e.preventDefault(); $('supplierId').value = ''; chip.style.display = 'none'; supSearch.style.display = ''; supSearch.focus(); });
+      itemSearch.focus();
+    });
+  supSearch.setAttribute('data-open-empty', '1');
+
+  // ---------- الأصناف ----------
+  Dropdown(itemSearch, itemList,
+    function (q) { return getJson('/purchases/api/medicines?q=' + encodeURIComponent(q)).then(function (d) { return d.results; }); },
+    function (m) {
+      return esc(m.name) + '<small>' + esc([m.form, m.manufacturer, m.serial_number ? 'سيريال: ' + m.serial_number : '', m.barcode ? 'باركود: ' + m.barcode : '', 'المخزون: ' + m.stock_units].filter(Boolean).join(' — ')) + '</small>';
+    },
+    function (m) { addLine(m); itemSearch.value = ''; msg(''); });
+
+  function addLine(med) {
+    MEDS[med.id] = med;
+    var tr = document.createElement('tr');
+    tr.setAttribute('data-med', med.id);
+    var levels = med.levels.slice().reverse();      // الأكبر أولًا
+    tr.innerHTML =
+      '<td data-label="الصنف">' + esc(med.name) + '<div style="color:var(--text-muted);font-size:11px">' + esc(med.form || '') + '</div></td>' +
+      '<td data-label="الوحدة"><select class="f-unit">' + levels.map(function (l) { return '<option value="' + l.key + '">' + esc(l.label) + '</option>'; }).join('') + '</select></td>' +
+      '<td data-label="الكمية"><input type="number" min="1" step="1" class="f-qty" value="1"></td>' +
+      '<td data-label="سعر الوحدة"><input type="number" min="0" step="0.01" class="f-cost" placeholder="0.00"></td>' +
+      '<td data-label="الصلاحية"><input type="date" class="f-exp"></td>' +
+      '<td data-label="رقم التشغيلة"><input type="text" class="f-batch" maxlength="80"></td>' +
+      '<td class="mono f-line" data-label="الإجمالي">0.00</td>' +
+      '<td><button type="button" class="btn-ghost-sm f-del" title="حذف">✕</button></td>';
+    tr.querySelector('.f-unit').value = med.default_unit;
+    tbody.appendChild(tr);
+    refresh();
+    tr.querySelector('.f-cost').focus();
+    return tr;
+  }
+
+  function rows() {
+    return Array.prototype.map.call(tbody.querySelectorAll('tr'), function (tr) {
+      return {
+        _tr: tr, medicine_id: parseInt(tr.getAttribute('data-med'), 10), unit: tr.querySelector('.f-unit').value,
+        quantity: tr.querySelector('.f-qty').value, cost: tr.querySelector('.f-cost').value,
+        expiry_date: tr.querySelector('.f-exp').value, batch_number: tr.querySelector('.f-batch').value.trim() || null
+      };
+    });
+  }
+
+  function refresh() {
+    var d = Math.min(Math.max(parseFloat($('disc').value) || 0, 0), 100), sub = 0;
+    rows().forEach(function (r) {
+      var gross = (parseFloat(r.quantity) || 0) * (parseFloat(r.cost) || 0);
+      sub += gross;
+      r._tr.querySelector('.f-line').textContent = (gross * (1 - d / 100)).toFixed(2);
+    });
+    var net = sub * (1 - d / 100), paid = parseFloat($('paid').value) || 0;
+    $('subtotal').textContent = sub.toFixed(2); $('discAmt').textContent = (sub - net).toFixed(2);
+    $('grand').textContent = net.toFixed(2); $('remain').textContent = Math.max(net - paid, 0).toFixed(2);
+    $('emptyLines').style.display = tbody.children.length ? 'none' : '';
+  }
+  tbody.addEventListener('input', refresh);
+  tbody.addEventListener('click', function (e) { if (e.target.classList.contains('f-del')) { e.target.closest('tr').remove(); refresh(); } });
+  $('disc').addEventListener('input', refresh);
+  $('paid').addEventListener('input', refresh);
+
+  // ---------- قارئ الباركود: يضيف الصنف مباشرة (ولو اتمسح تاني نفس الصنف يزوّد الكمية) ----------
+  window.onBarcodeScan = function (code) {
+    getJson('/purchases/api/medicines?q=' + encodeURIComponent(code)).then(function (d) {
+      if (d.exact && d.results.length) {
+        var m = d.results[0], existing = tbody.querySelector('tr[data-med="' + m.id + '"]');
+        if (existing && !existing.querySelector('.f-exp').value) {
+          var q = existing.querySelector('.f-qty'); q.value = (parseInt(q.value, 10) || 0) + 1; refresh();
+        } else { addLine(m); }
+        msg('تمت إضافة: ' + m.name, 'ok');
+      } else { itemSearch.value = code; itemSearch.dispatchEvent(new Event('input')); msg('الباركود/السيريال ' + code + ' غير مسجل — اختار الصنف يدويًا أو أضفه من صفحة الأصناف', 'err'); }
+    }).catch(function () { msg('حدث خطأ في الاتصال بالسيرفر', 'err'); });
+    return true;
+  };
+
+  $('piForm').addEventListener('submit', function (e) {
+    var rs = rows();
+    if (!$('supplierId').value) { e.preventDefault(); alert('اختار المورد الأول'); supSearch.focus(); return; }
+    if (!rs.length) { e.preventDefault(); alert('أضف صنف واحد على الأقل'); return; }
+    for (var i = 0; i < rs.length; i++) {
+      if (!rs[i].expiry_date) { e.preventDefault(); alert('البند رقم ' + (i + 1) + ': تاريخ الصلاحية مطلوب'); return; }
+      if (rs[i].cost === '') { e.preventDefault(); alert('البند رقم ' + (i + 1) + ': اكتب سعر الوحدة'); return; }
+    }
+    $('itemsJson').value = JSON.stringify(rs.map(function (r) { delete r._tr; return r; }));
+    $('submitBtn').disabled = true;
+  });
+  // Enter جوه خانات الفورم مايبعتش الفورم بالغلط
+  $('piForm').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); });
+  refresh();
+})();
+</script>
+<% } %>
 </body>
 </html>

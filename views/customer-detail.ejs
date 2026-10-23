@@ -153,8 +153,8 @@
         <div class="card no-print">
           <h2>بيانات العميل</h2>
           <form action="/customers/<%= customer.id %>/update" method="POST">
-            <div class="field"><label>الاسم</label><input type="text" name="name" value="<%= customer.name %>" required maxlength="120"></div>
-            <div class="field"><label>التليفون</label><input type="text" name="phone" value="<%= customer.phone || '' %>" dir="ltr"></div>
+            <div class="field"><label>الاسم</label><input type="text" name="name" data-input="name" value="<%= customer.name %>" required maxlength="120"></div>
+            <div class="field"><label>التليفون</label><input type="text" name="phone" data-input="phone" value="<%= customer.phone || '' %>" dir="ltr"></div>
             <div class="field"><label>العنوان</label><input type="text" name="address" value="<%= customer.address || '' %>"></div>
             <div class="field"><label>ملاحظات</label><textarea name="notes" rows="2" maxlength="500"><%= customer.notes || '' %></textarea></div>
             <% if (role === 'admin') { %>

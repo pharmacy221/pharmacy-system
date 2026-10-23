@@ -105,7 +105,7 @@
       <div>
         <div class="card">
           <div class="searchbar">
-            <input type="text" id="q" placeholder="ابحث بالاسم التجاري أو المادة الفعالة أو امسح الباركود..." autocomplete="off" autofocus>
+            <input type="text" id="q" data-scan-target data-scan-submit="no" placeholder="ابحث بالاسم التجاري أو المادة الفعالة أو امسح الباركود..." autocomplete="off" autofocus>
             <button type="button" class="btn-icon" id="openCameraBtn" title="مسح بالكاميرا">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
             </button>
@@ -205,8 +205,8 @@
           <!-- بيع عادي: اسم/تليفون العميل اختياري -->
           <div id="plainCust" class="cust-suggest">
             <div class="row2">
-              <div class="field"><label>اسم العميل</label><input type="text" id="customerName" placeholder="اختياري" autocomplete="off"></div>
-              <div class="field"><label>التليفون</label><input type="text" id="customerPhone" placeholder="01xxxxxxxxx" autocomplete="off" dir="ltr"></div>
+              <div class="field"><label>اسم العميل</label><input type="text" id="customerName" data-input="name" placeholder="اختياري" autocomplete="off"></div>
+              <div class="field"><label>التليفون</label><input type="text" id="customerPhone" data-input="phone" placeholder="01xxxxxxxxx" autocomplete="off" dir="ltr"></div>
             </div>
             <div class="dropdown" id="custDropdown" style="display:none;"></div>
           </div>
@@ -216,7 +216,7 @@
             <div class="cust-suggest" id="creditSearchWrap">
               <label>العميل (إجباري) — اكتب الاسم أو رقم الموبايل</label>
               <div class="row2" style="align-items:stretch;">
-                <input type="text" id="creditSearch" placeholder="ابحث أو اكتب عميل جديد..." autocomplete="off">
+                <input type="text" id="creditSearch" data-input="search" placeholder="ابحث أو اكتب عميل جديد..." autocomplete="off">
                 <button type="button" class="btn-ghost-sm" id="newCustBtn" style="max-width:110px;">＋ عميل جديد</button>
               </div>
               <div class="dropdown" id="creditDropdown" style="display:none;"></div>
@@ -225,8 +225,8 @@
             <div id="newCustForm" class="new-cust" style="display:none;">
               <h4>إضافة عميل جديد</h4>
               <div class="row2">
-                <div class="field"><label>الاسم *</label><input type="text" id="ncName" maxlength="120" autocomplete="off"></div>
-                <div class="field"><label>الموبايل</label><input type="text" id="ncPhone" maxlength="30" dir="ltr" placeholder="01xxxxxxxxx" autocomplete="off"></div>
+                <div class="field"><label>الاسم *</label><input type="text" id="ncName" data-input="name" maxlength="120" autocomplete="off"></div>
+                <div class="field"><label>الموبايل * (11 رقم)</label><input type="text" id="ncPhone" data-input="phone" maxlength="11" dir="ltr" required placeholder="01xxxxxxxxx" autocomplete="off"></div>
               </div>
               <div id="ncError" class="warn" style="display:none; margin-bottom:6px;"></div>
               <div class="row2">
@@ -592,6 +592,7 @@
       const name = $('ncName').value.trim(), phone = $('ncPhone').value.trim();
       const err = (m) => { $('ncError').textContent = m; $('ncError').style.display = 'block'; };
       if (!name) return err('اكتب اسم العميل');
+      if (!window.PhoneRules.valid(phone)) return err(window.PhoneRules.MSG);
       $('ncSave').disabled = true;
       try {
         const body = { name, phone };
@@ -666,6 +667,12 @@
       } catch (e) { report('حدث خطأ في الاتصال بالسيرفر', 'err'); }
       return false;
     }
+
+    // قارئ الباركود: شغال حتى لو الماوس/الفوكس في أي مكان تاني في الصفحة (باركود أو سيريال)
+    window.onBarcodeScan = (code) => {
+      lookupAndAdd(code).then((ok) => { if (ok) { $('q').value = ''; hideResults(); } else { $('q').value = code; runSearch(code); } });
+      return true;
+    };
 
     $('q').addEventListener('keydown', async (e) => {
       if (e.key === 'ArrowDown') { e.preventDefault(); if (results.length) { selIdx = Math.min(selIdx + 1, results.length - 1); renderResults(); } }
@@ -748,6 +755,8 @@
       if (!cart.length) return fail('الفاتورة فارغة، أضف صنفاً أولاً');
       $('checkoutBtn').disabled = true; $('checkoutBtn').textContent = 'جاري التسجيل...';
       try {
+        const ph = $('customerPhone').value.trim();
+        if (!isCredit() && ph && !window.PhoneRules.valid(ph)) return fail(window.PhoneRules.MSG);
         if (isCredit() && !selectedCustomer) return fail('البيع الآجل / التقسيط محتاج عميل: ابحث عنه أو اضغط «＋ عميل جديد»');
         const payload = {
           items: cart.map((i) => ({ medicine_id: i.m.id, sale_unit: i.sale_unit, quantity: i.quantity })),

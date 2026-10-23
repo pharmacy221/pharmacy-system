@@ -50,7 +50,7 @@
 
     <div class="card" style="margin-bottom:16px;">
       <form method="GET" action="/products" id="searchForm" style="display:flex; gap:8px; flex-wrap:wrap;">
-        <input type="search" name="q" id="q" value="<%= searchQuery %>" autocomplete="off" autofocus placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود أو السريال أو الشركة أو الحالة... (النتايج بتظهر وانت بتكتب)" style="flex:1; min-width:220px;">
+        <input type="search" name="q" id="q" data-scan-target data-scan-submit="no" value="<%= searchQuery %>" autocomplete="off" autofocus placeholder="ابحث بالاسم أو الاسم العلمي أو الباركود أو السريال أو الشركة أو الحالة... (النتايج بتظهر وانت بتكتب)" style="flex:1; min-width:220px;">
         <button type="submit" class="btn-outline btn-sm">بحث</button>
         <button type="button" id="clearSearch" class="btn-ghost-sm" style="<%= searchQuery ? '' : 'display:none;' %>">مسح</button>
         <select name="form" style="max-width:160px;">

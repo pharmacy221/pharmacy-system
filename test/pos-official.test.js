@@ -72,6 +72,26 @@ describe('الكاشير: عميل جديد + أسعار رسمية + فاتور
     assert.equal(badPhone.status, 400);
   });
 
+  it('الاسم والموبايل: ممنوع أرقام في الاسم وحروف في الموبايل، والموبايل 11 رقم مصري صحيح', async () => {
+    const q = (name, phone) => call('POST', '/customers/quick', { user: 3, body: { name, phone } });
+    assert.equal((await q('احمد 5', '01055555555')).status, 400, 'رقم في الاسم');
+    assert.equal((await q('احمد', '0105555555a')).status, 400, 'حرف في الموبايل');
+    assert.equal((await q('احمد', '0105555555')).status, 400, '10 أرقام');
+    assert.equal((await q('احمد', '010555555555')).status, 400, '12 رقم');
+    assert.equal((await q('احمد', '01355555555')).status, 400, 'مش كود شبكة مصري');
+    assert.equal((await q('احمد', '')).status, 400, 'الموبايل مطلوب');
+    const ok = await q('احمد', '٠١٠٥٥٥٥٥٥٥٥');
+    assert.equal(ok.status, 200);
+    assert.equal(ok.json.customer.phone, '01055555555', 'الأرقام العربية بتتحوّل');
+    // نفس القواعد في تسجيل البيع من الكاشير
+    const med = await T.addMedicine(db, { price: 10 });
+    await T.addBatch(db, med, 365, 5, 5);
+    const co = (extra) => call('POST', '/pos/checkout', { user: 3, body: { items: [{ medicine_id: med, quantity: 1 }], ...extra } });
+    assert.equal((await co({ customer_name: 'سعيد9' })).status, 400);
+    assert.equal((await co({ customer_phone: '0123' })).status, 400);
+    assert.equal((await co({ customer_name: 'سعيد', customer_phone: '01012345678' })).status, 200);
+  });
+
   it('البحث في الكاشير بيرجّع المديونية (عليه فلوس / لا)', async () => {
     const s = await call('GET', '/customers/search?q=' + encodeURIComponent('سعيد'), { user: 3 });
     assert.equal(s.json.results.length, 1);
