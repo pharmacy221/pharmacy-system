@@ -219,6 +219,22 @@ router.post('/api/medicines/add', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// رصيد المورد (اللي علينا له) + فواتيره غير المسددة، الأقدم أولًا — بتظهر في صفحة فاتورة الشراء لما تختار المورد
+router.get('/api/supplier-balance', async (req, res, next) => {
+  try {
+    const id = parseId(req.query.id);
+    if (!id) return res.json({ balance: 0, invoices: [] });
+    const invoices = await query(
+      `SELECT id, invoice_number, to_char(invoice_date, 'YYYY-MM-DD') AS invoice_date, total_amount, paid_amount,
+              (total_amount - paid_amount) AS remaining
+       FROM purchase_invoices
+       WHERE supplier_id = $1 AND status = 'received' AND paid_amount < total_amount
+       ORDER BY invoice_date, id LIMIT 50`, [id]);
+    const balance = invoices.reduce((t, i) => t + Number(i.remaining), 0);
+    res.json({ balance: Math.round(balance * 100) / 100, invoices });
+  } catch (err) { next(err); }
+});
+
 // أنواع المنتجات لفورم إضافة الصنف
 router.get('/api/forms', (req, res) => {
   res.json({ forms: FORM_ORDER.map((k) => ({ key: k, label: FORMS[k].label, counted: !!FORMS[k].counted, strip: !!FORMS[k].strip, unit: FORMS[k].unit })) });
@@ -271,12 +287,19 @@ router.post('/create', async (req, res, next) => {
     const discount = b.discount_percent === undefined || String(b.discount_percent).trim() === '' ? 0 : Number(b.discount_percent);
     if (!Number.isFinite(discount) || discount < 0 || discount > 100) throw new BusinessError('نسبة الخصم لازم تكون بين 0 و 100');
 
-    const row = await queryOne(
-      `SELECT create_purchase_invoice($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) AS id`,
-      [supplierId, (b.invoice_number || '').slice(0, 80), invoiceDate, dueDate, (b.notes || '').slice(0, 500),
-       req.session.userId, req.session.username, JSON.stringify(items), paid, method, cleanKey(b.idempotency_key), discount]
-    );
-    res.redirect('/purchases/' + row.id);
+    const args = [supplierId, (b.invoice_number || '').slice(0, 80), invoiceDate, dueDate, (b.notes || '').slice(0, 500),
+       req.session.userId, req.session.username, JSON.stringify(items), paid, method, cleanKey(b.idempotency_key), discount];
+    // المدفوع لو زاد عن الفاتورة، الزيادة بتتخصم من مديونية المورد القديمة (migration_012)
+    let r;
+    try {
+      r = (await queryOne(`SELECT create_purchase_invoice_settle($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) AS r`, args)).r;
+    } catch (e) {
+      if (e && e.code === '42883') { // migration_012 لسه متطبقتش: السلوك القديم
+        r = { invoice_id: (await queryOne(`SELECT create_purchase_invoice($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12) AS id`, args)).id, paid_old: 0 };
+      } else throw e;
+    }
+    const msg = Number(r.paid_old) > 0 ? `تم تسجيل الفاتورة، وسداد ${Number(r.paid_old).toFixed(2)} ج.م من مديونية قديمة للمورد` : '';
+    res.redirect('/purchases/' + r.invoice_id + (msg ? '?ok=' + encodeURIComponent(msg) : ''));
   } catch (err) {
     if (isBusinessError(err)) {
       if (err.code === 'PH003' && cleanKey(b.idempotency_key)) {

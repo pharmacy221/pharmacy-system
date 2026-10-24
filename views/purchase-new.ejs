@@ -31,7 +31,7 @@
       <div class="card">
         <div class="form-grid">
           <div class="field"><label>المورد *</label>
-            <select name="supplier_id" required>
+            <select name="supplier_id" id="supplierSel" required>
               <option value="">-- اختر المورد --</option>
               <% suppliers.forEach(s => { %><option value="<%= s.id %>" <%= String(form.supplier_id || '') === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }) %>
             </select></div>
@@ -40,6 +40,7 @@
           <div class="field"><label>ميعاد الاستحقاق (للآجل)</label><input type="date" name="due_date" value="<%= form.due_date || '' %>"></div>
           <div class="field"><label>نسبة الخصم على الطلبية %</label><input type="number" name="discount_percent" id="disc" min="0" max="100" step="0.01" value="<%= form.discount_percent || '0' %>"></div>
         </div>
+        <div id="supBalance" style="display:none; margin-top:12px; padding:10px 12px; border-radius:10px; border:1px dashed var(--accent); background:var(--accent-soft);"></div>
       </div>
 
       <div class="card">
@@ -63,6 +64,7 @@
             <select name="method"><option value="cash">نقدي</option><option value="bank">تحويل بنكي</option><option value="other">أخرى</option></select></div>
           <div class="field"><label>المتبقي على المورد</label><div class="pi-total mono"><span id="remain">0.00</span> ج.م</div></div>
         </div>
+        <div id="paidNote" style="display:none; margin-bottom:12px; padding:10px 12px; border-radius:10px;"></div>
         <div class="field"><label>ملاحظات</label><input type="text" name="notes" maxlength="500" value="<%= form.notes || '' %>"></div>
         <button type="submit" class="btn" id="submitBtn">تسجيل الفاتورة واستلام البضاعة</button>
       </div>
@@ -127,7 +129,51 @@
     document.getElementById('grand').textContent = total.toFixed(2);
     var paid = parseFloat(document.getElementById('paid').value) || 0;
     document.getElementById('remain').textContent = Math.max(total - paid, 0).toFixed(2);
+    lastTotal = total;
+    showPaidNote(total, paid);
   }
+
+  // ---------- مديونية المورد القديمة + سداد الزيادة منها ----------
+  var lastTotal = 0, supBalance = 0, supInvoices = [], supReq = 0;
+  function money(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+  function showPaidNote(total, paid) {
+    var box = document.getElementById('paidNote');
+    var extra = Math.round((paid - total) * 100) / 100;
+    if (extra <= 0.004) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    if (!document.getElementById('supplierSel').value) {
+      box.style.cssText = 'display:block; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:rgba(220,53,69,.12); color:var(--danger);';
+      box.textContent = 'المدفوع أكبر من إجمالي الفاتورة — اختار المورد الأول.';
+    } else if (extra > supBalance + 0.004) {
+      box.style.cssText = 'display:block; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:rgba(220,53,69,.12); color:var(--danger);';
+      box.textContent = 'المدفوع أكبر من إجمالي الفاتورة (' + money(total) + ') بمبلغ ' + money(extra) + '، والمورد مديونيته القديمة ' + money(supBalance) + ' بس — قلّل المدفوع.';
+    } else {
+      box.style.cssText = 'display:block; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:var(--accent-soft);';
+      box.textContent = 'هيتسجل: ' + money(Math.min(total, paid)) + ' ج.م على الفاتورة دي، والزيادة ' + money(extra) + ' ج.م هتتخصم من فواتير المورد القديمة (الأقدم أولًا). هيفضل له ' + money(supBalance - extra) + ' ج.م.';
+    }
+  }
+  function loadSupplier() {
+    var id = document.getElementById('supplierSel').value, box = document.getElementById('supBalance');
+    supBalance = 0; supInvoices = [];
+    if (!id) { box.style.display = 'none'; recalc(); return; }
+    var req = ++supReq;
+    fetch('/purchases/api/supplier-balance?id=' + encodeURIComponent(id), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (req !== supReq) return;
+        supBalance = Number(d.balance) || 0; supInvoices = d.invoices || [];
+        box.style.display = 'block';
+        if (!supBalance) { box.textContent = 'المورد ده مفيش له مديونية قديمة عندك.'; recalc(); return; }
+        box.innerHTML = '<b>المورد له عندك ' + money(supBalance) + ' ج.م</b> (' + supInvoices.length + ' فاتورة غير مسددة). ' +
+          'لو دفعت أكتر من إجمالي الفاتورة الجديدة، الزيادة بتتخصم منها تلقائيًا.' +
+          '<div style="margin-top:6px; font-size:13px; color:var(--text-muted);">' +
+          supInvoices.slice(0, 5).map(function (i) { return '#' + i.id + (i.invoice_number ? ' (' + esc(i.invoice_number) + ')' : '') + ' — ' + esc(i.invoice_date) + ' — متبقي ' + money(Number(i.remaining)); }).join('<br>') +
+          (supInvoices.length > 5 ? '<br>…' : '') + '</div>';
+        recalc();
+      })
+      .catch(function () { box.style.display = 'none'; });
+  }
+  document.getElementById('supplierSel').addEventListener('change', loadSupplier);
 
   tbody.addEventListener('input', recalc);
   tbody.addEventListener('click', function (e) {
@@ -163,6 +209,7 @@
 
   (saved.length ? saved : [{}]).forEach(addLine);
   recalc();
+  loadSupplier();
 })();
 </script>
 </body>
