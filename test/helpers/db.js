@@ -12,7 +12,7 @@ const { Client, Pool } = require('pg');
 const ADMIN_URL = process.env.TEST_DATABASE_URL || '';
 const SKIP = ADMIN_URL ? false : 'TEST_DATABASE_URL غير محدد — اختبارات قاعدة البيانات اتخطّت';
 const DB_DIR = path.join(__dirname, '..', '..', 'db');
-const FILES = ['pharmacy_schema.sql', 'migration_forms.sql', 'migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql', 'migration_005_customers_credit_compliance.sql', 'migration_006_price_history.sql', 'migration_007_no_credit_limit.sql'];
+const FILES = ['pharmacy_schema.sql', 'migration_forms.sql', 'migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql', 'migration_005_customers_credit_compliance.sql', 'migration_006_price_history.sql', 'migration_007_no_credit_limit.sql', 'migration_008_order_discount_supplier_company.sql', 'migration_009_item_discount.sql', 'migration_010_shortcut_sizes.sql'];
 
 function withDb(url, dbname) {
   const u = new URL(url);

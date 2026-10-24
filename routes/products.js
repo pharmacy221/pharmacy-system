@@ -6,13 +6,16 @@ const { requireLogin, requireAdmin, requireRole } = require('../middleware/auth'
 const { logActivity } = require('../lib/activity-log');
 const { FORMS, FORM_ORDER, saleLevels, singleLabel } = require('../lib/drug-form');
 const { BusinessError, isBusinessError, statusFor, userMessage } = require('../lib/errors');
+const { cleanShortcut, cleanSize, duplicateMessage } = require('../lib/medicine-extras');
 
 const router = express.Router();
 router.use(requireLogin);
 
 const PAGE_SIZE = 60;
 // متغيرات مشتركة لكل صفحات الأصناف (الترقيم + الفلاتر + نوع المنتج + اسم الوحدة)
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
+  // مجموعات المقاسات الموجودة (لاقتراحها في فورم الصنف)
+  try { res.locals.sizeGroups = (await query(`SELECT DISTINCT size_group FROM medicines WHERE size_group IS NOT NULL ORDER BY 1`)).map((r) => r.size_group); } catch (e) { res.locals.sizeGroups = []; }
   res.locals.pg = { page: 1, pages: 1, total: null, form: '', instock: false };
   res.locals.formKinds = Object.entries(FORMS).map(([key, f]) => ({ key, label: f.label }));
   res.locals.unitName = (p) => saleLevels(p).levels[0].label;
@@ -191,6 +194,8 @@ router.post('/add', requireAdmin, async (req, res, next) => {
     } = req.body;
     const kind = FORMS[form_kind] ? form_kind : null;
     const pack = packFields(kind, req.body);
+    const shortcut = cleanShortcut(req.body.shortcut_code);
+    const size = cleanSize(req.body);
 
     if (!name || !name.trim() || sale_price_unit === undefined || sale_price_unit === '') {
       const medicines = await getMedicines();
@@ -218,8 +223,9 @@ router.post('/add', requireAdmin, async (req, res, next) => {
             units_per_strip, strips_per_box,
             sale_price_unit, sale_price_strip, sale_price_box,
             cost_price_unit, stock_units, min_stock_units,
-            conditions_tags, min_age_years, max_age_years, form_kind
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,$18,$19,$20)
+            conditions_tags, min_age_years, max_age_years, form_kind,
+            shortcut_code, size_group, size_label, size_order
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,$18,$19,$20,$21,$22,$23,$24)
          RETURNING id`,
         [
           name.trim(),
@@ -241,7 +247,8 @@ router.post('/add', requireAdmin, async (req, res, next) => {
           conditions_tags && conditions_tags.trim() ? conditions_tags.trim() : null,
           parseAge(min_age_years),
           parseAge(max_age_years),
-          kind
+          kind,
+          shortcut, size.group, size.label, size.order
         ]
       );
       const id = ins.rows[0].id;
@@ -263,7 +270,7 @@ router.post('/add', requireAdmin, async (req, res, next) => {
   } catch (err) {
     if (err.code === '23505') {
       const medicines = await getMedicines();
-      return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود أو السريال ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
+      return res.render('products', { medicines, categories: CATEGORIES, error: duplicateMessage(err), searchQuery: '', active: 'products' });
     }
     if (isBusinessError(err)) {
       const medicines = await getMedicines();
@@ -288,6 +295,8 @@ router.post('/:id/update', requireAdmin, async (req, res, next) => {
     // لو النوع مااتغيرش (— بدون تغيير —) نعتمد على النوع المحفوظ للصنف
     const current = await queryOne('SELECT form_kind, stock_units FROM medicines WHERE id = $1', [req.params.id]);
     const pack = packFields(kind || (current && current.form_kind) || null, req.body);
+    const shortcut = cleanShortcut(req.body.shortcut_code);
+    const size = cleanSize(req.body);
 
     await withTransaction(async (c) => {
       // سجل تغيّر الأسعار (migration_006): بنعرّفه مين غيّر السعر والمصدر يدوي
@@ -299,8 +308,9 @@ router.post('/:id/update', requireAdmin, async (req, res, next) => {
             units_per_strip = $10, strips_per_box = $11,
             sale_price_unit = $12, sale_price_strip = $13, sale_price_box = $14,
             cost_price_unit = $15, min_stock_units = $16,
-            conditions_tags = $17, min_age_years = $18, max_age_years = $19, form_kind = COALESCE($20, form_kind)
-         WHERE id = $21`,
+            conditions_tags = $17, min_age_years = $18, max_age_years = $19, form_kind = COALESCE($20, form_kind),
+            shortcut_code = $21, size_group = $22, size_label = $23, size_order = $24
+         WHERE id = $25`,
         [
           name.trim(),
           generic_name && generic_name.trim() ? generic_name.trim() : null,
@@ -322,6 +332,7 @@ router.post('/:id/update', requireAdmin, async (req, res, next) => {
           parseAge(min_age_years),
           parseAge(max_age_years),
           kind,
+          shortcut, size.group, size.label, size.order,
           req.params.id
         ]
       );
@@ -344,7 +355,7 @@ router.post('/:id/update', requireAdmin, async (req, res, next) => {
   } catch (err) {
     if (err.code === '23505') {
       const medicines = await getMedicines();
-      return res.render('products', { medicines, categories: CATEGORIES, error: 'الباركود أو السريال ده مستخدم في صنف تاني بالفعل', searchQuery: '', active: 'products' });
+      return res.render('products', { medicines, categories: CATEGORIES, error: duplicateMessage(err), searchQuery: '', active: 'products' });
     }
     if (isBusinessError(err)) {
       const medicines = await getMedicines();

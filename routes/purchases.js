@@ -6,6 +6,7 @@ const { requireLogin, requireRole } = require('../middleware/auth');
 const { BusinessError, isBusinessError, statusFor, userMessage, cleanKey } = require('../lib/errors');
 const { saleLevels, FORMS, FORM_ORDER } = require('../lib/drug-form');
 const { logActivity } = require('../lib/activity-log');
+const { cleanShortcut } = require('../lib/medicine-extras');
 
 router.use(requireLogin, requireRole('admin', 'pharmacist'));
 const adminOnly = requireRole('admin');
@@ -82,6 +83,32 @@ function shapeMed(m) {
   };
 }
 
+// آخر سعر شراء مسجّل لكل صنف (من آخر فاتورة شراء مستلمة)، بسعر الحبة قبل الخصم؛ وعلى أساسه الصفحة بتحسب سعر أي وحدة.
+// لو الصنف مفيش له فواتير شراء (رصيد افتتاحي/مستورد) بنرجع متوسط تكلفة الحبة المسجّل عليه (source = 'avg').
+async function attachLastCosts(rows, shaped) {
+  if (!rows.length) return shaped;
+  const ids = rows.map((r) => r.id);
+  const last = await query(
+    `SELECT DISTINCT ON (i.medicine_id) i.medicine_id,
+            (i.entry_cost * i.entry_quantity / NULLIF(i.quantity_units, 0))::float8 AS unit_cost,
+            i.discount_percent::float8 AS discount_percent, pi.invoice_date, s.name AS supplier_name
+     FROM purchase_invoice_items i
+     JOIN purchase_invoices pi ON pi.id = i.invoice_id AND pi.status = 'received'
+     LEFT JOIN suppliers s ON s.id = pi.supplier_id
+     WHERE i.medicine_id = ANY($1::int[])
+     ORDER BY i.medicine_id, pi.invoice_date DESC, i.id DESC`, [ids]);
+  const byId = new Map(last.map((r) => [r.medicine_id, r]));
+  return shaped.map((m, idx) => {
+    const l = byId.get(m.id);
+    if (l && l.unit_cost != null) {
+      const d = l.invoice_date instanceof Date ? l.invoice_date.toISOString().slice(0, 10) : String(l.invoice_date).slice(0, 10);
+      return { ...m, last_cost: { unit_cost: l.unit_cost, discount_percent: l.discount_percent || 0, date: d, supplier: l.supplier_name || null, source: 'invoice' } };
+    }
+    const avg = Number(rows[idx].cost_price_unit);
+    return { ...m, last_cost: avg > 0 ? { unit_cost: avg, discount_percent: 0, date: null, supplier: null, source: 'avg' } : null };
+  });
+}
+
 // الأصناف: بالاسم / المادة الفعالة / الشركة المصنّعة / الباركود / السيريال (كل كلمة في أي مكان وبأي ترتيب)
 router.get('/api/medicines', async (req, res, next) => {
   try {
@@ -95,14 +122,14 @@ router.get('/api/medicines', async (req, res, next) => {
     const iPrefix = params.length;
     const rows = await query(
       `SELECT id, name, generic_name, manufacturer, barcode, serial_number, form_kind, dosage_form,
-              units_per_strip, strips_per_box, stock_units
+              units_per_strip, strips_per_box, stock_units, cost_price_unit
        FROM medicines
        WHERE is_active = true AND (barcode = $1 OR serial_number = $1 OR (${where.join(' AND ')}))
        ORDER BY (barcode = $1 OR serial_number = $1) DESC, (${SQL_NORM('name')} LIKE $${iPrefix}) DESC, lower(name)
        LIMIT 30`, params);
     res.json({
       exact: rows.length > 0 && (rows[0].barcode === raw || rows[0].serial_number === raw),
-      results: rows.map(shapeMed)
+      results: await attachLastCosts(rows, rows.map(shapeMed))
     });
   } catch (err) { next(err); }
 });
@@ -157,17 +184,19 @@ router.post('/api/medicines/add', async (req, res, next) => {
     const barcode = String(b.barcode || '').trim().slice(0, 64) || null;
     const serial = String(b.serial_number || '').trim().slice(0, 64) || null;
     const manufacturer = String(b.manufacturer || '').trim().slice(0, 150) || null;
+    let shortcut;
+    try { shortcut = cleanShortcut(b.shortcut_code); } catch (e) { return res.status(400).json({ error: e.message }); }
 
     let row;
     try {
       row = await queryOne(
         `INSERT INTO medicines (name, dosage_form, form_kind, manufacturer, barcode, serial_number, units_per_strip, strips_per_box,
-                                sale_price_unit, sale_price_strip, sale_price_box, stock_units)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0)
+                                sale_price_unit, sale_price_strip, sale_price_box, stock_units, shortcut_code)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0,$12)
          RETURNING id, name, manufacturer, barcode, serial_number, form_kind, dosage_form, units_per_strip, strips_per_box, stock_units`,
-        [name, f.label, kind, manufacturer, barcode, serial, ups, spb, unitPrice, stripPrice, boxCol]);
+        [name, f.label, kind, manufacturer, barcode, serial, ups, spb, unitPrice, stripPrice, boxCol, shortcut]);
     } catch (err) {
-      if (err && err.code === '23505') return res.status(409).json({ error: 'الباركود ده مستخدم لصنف تاني' });
+      if (err && err.code === '23505') return res.status(409).json({ error: /shortcut/i.test(String(err.constraint || '')) ? 'كلمة الاختصار دي مستخدمة في صنف تاني' : 'الباركود ده مستخدم لصنف تاني' });
       throw err;
     }
     await logActivity(req, { action: 'إضافة صنف جديد', entityType: 'medicine', entityId: row.id, details: { medicine_name: name, from: 'batches' } });

@@ -80,8 +80,8 @@ router.get('/search', async (req, res, next) => {
     const rows = await query(
       `SELECT * FROM medicines
        WHERE is_active = true ${instock ? `AND ${SELLABLE_EXISTS}` : ''}
-         AND (barcode = $1 OR serial_number = $1 OR (${conds.join(' AND ')}))
-       ORDER BY (barcode = $1 OR serial_number = $1) DESC, (${SELLABLE_EXISTS}) DESC, (name ILIKE ${prefix}) DESC, lower(name)
+         AND (barcode = $1 OR serial_number = $1 OR lower(shortcut_code) = lower($1) OR (${conds.join(' AND ')}))
+       ORDER BY (barcode = $1 OR serial_number = $1 OR lower(shortcut_code) = lower($1)) DESC, (${SELLABLE_EXISTS}) DESC, (name ILIKE ${prefix}) DESC, lower(name)
        LIMIT 40`,
       params
     );
@@ -114,11 +114,29 @@ router.get('/lookup', async (req, res, next) => {
     const barcode = (req.query.barcode || '').trim();
     if (!barcode) return res.json({ found: false });
 
-    const medicine = await queryOne('SELECT * FROM medicines WHERE (barcode = $1 OR serial_number = $1) AND is_active = true ORDER BY (barcode = $1) DESC LIMIT 1', [barcode]);
+    let medicine = await queryOne('SELECT * FROM medicines WHERE (barcode = $1 OR serial_number = $1) AND is_active = true ORDER BY (barcode = $1) DESC LIMIT 1', [barcode]);
+    // لو مش باركود/سيريال: نجرّب كلمة الاختصار اللي اتحددت للصنف (?alias=1 من خانة البحث)
+    if (!medicine && req.query.alias === '1') {
+      medicine = await queryOne('SELECT * FROM medicines WHERE lower(shortcut_code) = lower($1) AND is_active = true LIMIT 1', [barcode]);
+    }
     if (!medicine) return res.json({ found: false });
 
     const [sellable] = await withSellableStock([medicine]);
     res.json({ found: true, medicine: withLevels(sellable) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// مقاسات الصنف (نفس مجموعة المقاسات) بترتيب المقاس من الأصغر للأكبر — الكاشير بيستخدمها لأسهم ↑ ↓
+router.get('/sizes', async (req, res, next) => {
+  try {
+    const m = await queryOne('SELECT id, size_group FROM medicines WHERE id = $1', [parseInt(req.query.id, 10) || 0]);
+    if (!m || !m.size_group) return res.json({ group: null, results: [] });
+    const rows = await query(
+      `SELECT * FROM medicines WHERE is_active = true AND lower(size_group) = lower($1)
+       ORDER BY size_order ASC NULLS LAST, lower(name), id LIMIT 60`, [m.size_group]);
+    res.json({ group: m.size_group, results: (await withSellableStock(rows)).map(withLevels) });
   } catch (err) {
     next(err);
   }

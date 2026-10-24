@@ -4,6 +4,7 @@ const express = require('express');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const { pool } = require('./db');
+const { ensureSchema } = require('./db/ensure-schema');
 
 const authRoutes = require('./routes/auth');
 const homeRoutes = require('./routes/home');
@@ -61,6 +62,9 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// أعمدة كلمة الاختصار والمقاسات (migration_010) تتأكد تلقائيًا أول طلب
+app.use((req, res, next) => { ensureSchema(pool).then(() => next(), () => next()); });
 
 app.use(session({
   store: new pgSession({

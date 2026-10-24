@@ -98,6 +98,8 @@
                     <% if (p.generic_name) { %><br><span style="color:var(--text-muted); font-size:12px;"><%= p.generic_name %></span><% } %>
                     <% if (p.requires_prescription) { %> <span class="badge badge-pending">روشتة</span><% } %>
                     <% if (p.controlled_substance) { %> <span class="badge badge-ignored">خاضع للرقابة</span><% } %>
+                    <% if (p.shortcut_code) { %> <span class="badge badge-pending" title="كلمة اختصار الكاشير">⚡ <%= p.shortcut_code %></span><% } %>
+                    <% if (p.size_group) { %> <span class="badge badge-pending" title="مجموعة المقاسات">📏 <%= p.size_group %><%= p.size_label ? ' — ' + p.size_label : '' %></span><% } %>
                   </td>
                   <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="الباركود"><%= p.barcode || '—' %></td>
                   <td class="mono" style="color:var(--text-muted); font-size:12px;" data-label="السريال"><%= p.serial_number || '—' %></td>
@@ -181,6 +183,22 @@
                       <div class="field" style="margin-bottom:0; grid-column: span 2;">
                         <label>الحالات المرضية (افصل بفاصلة)</label>
                         <input type="text" name="conditions_tags" value="<%= p.conditions_tags || '' %>" placeholder="مثال: برد, صداع, حرارة">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>كلمة اختصار للكاشير</label>
+                        <input type="text" name="shortcut_code" maxlength="40" value="<%= p.shortcut_code || '' %>" placeholder="كلمة واحدة (اختياري)">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>مجموعة المقاسات</label>
+                        <input type="text" name="size_group" maxlength="80" list="sizeGroupsList" value="<%= p.size_group || '' %>" placeholder="مثال: سرنجات / حفاظات">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>المقاس</label>
+                        <input type="text" name="size_label" maxlength="40" value="<%= p.size_label || '' %>" placeholder="مثال: 5 مل / L">
+                      </div>
+                      <div class="field" style="margin-bottom:0;">
+                        <label>ترتيب المقاس (الأصغر رقم أصغر)</label>
+                        <input type="number" step="any" name="size_order" value="<%= p.size_order != null ? p.size_order : '' %>" placeholder="مثال: 1، 2، 3">
                       </div>
                       <div class="field" style="margin-bottom:0;">
                         <label>أقل سن مسموح (اختياري)</label>
@@ -335,6 +353,25 @@
             <input type="text" name="conditions_tags" placeholder="مثال: برد, صداع, حرارة">
             <small style="color:var(--text-muted);">دي اللي بتظهر بيها الصنف ده في صفحة "بحث بالحالة"، غير البحث بالمادة الفعالة اللي فوق.</small>
           </div>
+          <div class="field">
+            <label>كلمة اختصار للكاشير (اختياري)</label>
+            <input type="text" name="shortcut_code" maxlength="40" placeholder="كلمة واحدة من غير مسافات">
+            <small style="color:var(--text-muted);">تكتبها في خانة البحث في الكاشير وتدوس Enter فالصنف يتضاف للفاتورة علطول.</small>
+          </div>
+          <div class="field">
+            <label>مجموعة المقاسات (اختياري)</label>
+            <input type="text" name="size_group" maxlength="80" list="sizeGroupsList" placeholder="مثال: سرنجات / حفاظات بامبرز">
+            <small style="color:var(--text-muted);">كل الأصناف اللي ليها نفس المجموعة بتتنقل بينها بسهم ↑ ↓ في الكاشير.</small>
+          </div>
+          <div class="field">
+            <label>المقاس</label>
+            <input type="text" name="size_label" maxlength="40" placeholder="مثال: 5 مل / L / مقاس 3">
+          </div>
+          <div class="field">
+            <label>ترتيب المقاس</label>
+            <input type="number" step="any" name="size_order" placeholder="الأصغر رقم أصغر: 1، 2، 3">
+          </div>
+          <datalist id="sizeGroupsList"><% (typeof sizeGroups !== 'undefined' ? sizeGroups : []).forEach(g => { %><option value="<%= g %>"><% }) %></datalist>
           <div class="field">
             <label>أقل سن مسموح (اختياري)</label>
             <input type="number" step="0.5" min="0" name="min_age_years" placeholder="بالسنة">

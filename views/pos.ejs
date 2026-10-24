@@ -117,6 +117,7 @@
             <span><kbd>Enter</kbd> إضافة</span>
             <span><kbd>Ctrl+Enter</kbd> <span data-sc-wrap="pos_checkout" style="display:inline"><kbd data-sc="pos_checkout"></kbd> </span>إتمام البيع</span>
             <span data-sc-wrap="pos_qty_up"><kbd data-sc="pos_qty_up"></kbd><kbd data-sc="pos_qty_down"></kbd> زيادة/تقليل الكمية</span>
+            <span data-sc-wrap="pos_size_up"><kbd data-sc="pos_size_up"></kbd><kbd data-sc="pos_size_down"></kbd> مقاس أكبر/أصغر</span>
             <span id="status"></span>
           </div>
 
@@ -382,6 +383,7 @@
             <td>
               <div class="pname">${esc(m.name)}
                 ${m.form_label ? `<span class="tag form">${esc(m.form_label)}</span>` : ''}
+                ${m.size_label ? `<span class="tag form">📏 ${esc(m.size_label)}</span>` : ''}
                 ${m.requires_prescription ? '<span class="tag rx">روشتة</span>' : ''}
                 ${officialTag(m)}
               </div>
@@ -435,7 +437,7 @@
           : `<span class="tag form" style="margin:0;">${esc(i.m.levels[0].label)}</span>`;
         return `
           <tr class="${idx === activeLine() ? 'sel-line' : ''}">
-            <td><div class="pname">${esc(i.m.name)}</div>
+            <td><div class="pname">${esc(i.m.name)}${i.m.size_label ? ` <span class="tag form" style="margin:0;" title="المقاس">📏 ${esc(i.m.size_label)}</span>` : ''}</div>
               ${i.m.requires_prescription ? '<div class="psub" style="color:var(--amber)">تحتاج روشتة</div>' : ''}
               ${officialDiff(i.m) !== null ? `<div class="psub" style="color:var(--danger)">⚠ سعر العلبة الرسمي ${money(i.m.official_box)}</div>` : ''}
               ${over ? `<div class="warn">المتاح في المخزون: ${esc(stockText(i.m))}</div>` : ''}</td>
@@ -494,6 +496,52 @@
       activeIdx = Math.min(Math.max(activeLine() + d, 0), cart.length - 1);
       markActive();
     }
+    // ---------- المقاس الأكبر/الأصغر (↑ ↓) ----------
+    // الصنف اللي ليه مجموعة مقاسات (سرنجات/حفاظات...) بينتقل لأقرب مقاس متاح في نفس المجموعة وبنفس الكمية.
+    // الصنف من غير مقاسات: بيتنقل لوحدة البيع الأكبر/الأصغر (حبة ↔ شريط ↔ علبة).
+    const sizeCache = new Map();   // مجموعة المقاسات -> { at, list }
+    async function sizesOf(m) {
+      const key = String(m.size_group).toLowerCase();
+      const hit = sizeCache.get(key);
+      if (hit && Date.now() - hit.at < 30000) return hit.list;
+      const res = await fetch('/pos/sizes?id=' + m.id);
+      const data = await res.json();
+      const list = data.results || [];
+      sizeCache.set(key, { at: Date.now(), list });
+      return list;
+    }
+    let sizeBusy = false;
+    async function changeSize(dir) {
+      const a = activeLine(); if (a < 0 || sizeBusy) return;
+      const line = cart[a], m = line.m;
+      sizeBusy = true;
+      try {
+        if (m.size_group) {
+          const list = await sizesOf(m);
+          const pos = list.findIndex((x) => x.id === m.id);
+          if (pos < 0) { showStatus('تعذر تحديد المقاسات', 'err'); return; }
+          let target = null;
+          for (let k = pos + dir; k >= 0 && k < list.length; k += dir) { if (Number(list[k].stock_units) > 0) { target = list[k]; break; } }
+          if (!target) { showStatus(dir > 0 ? 'مفيش مقاس أكبر متاح' : 'مفيش مقاس أصغر متاح', 'err'); return; }
+          const unit = target.levels.some((l) => l.key === line.sale_unit) ? line.sale_unit : target.default_level;
+          const dup = cart.find((i, n) => n !== a && i.m.id === target.id && i.sale_unit === unit);
+          if (dup) { dup.quantity += line.quantity; cart.splice(a, 1); activeIdx = cart.indexOf(dup); }
+          else { line.m = target; line.sale_unit = unit; }
+          showStatus('المقاس: ' + (target.size_label || target.name), 'ok');
+        } else {
+          const lv = [...m.levels].sort((x, y) => x.qty - y.qty);
+          const n = lv.findIndex((l) => l.key === line.sale_unit) + dir;
+          if (n < 0 || n >= lv.length) { showStatus(dir > 0 ? 'دي أكبر وحدة للصنف' : 'دي أصغر وحدة للصنف', 'err'); return; }
+          const dup = cart.find((i, k) => k !== a && i.m.id === m.id && i.sale_unit === lv[n].key);
+          if (dup) { dup.quantity += line.quantity; cart.splice(a, 1); activeIdx = cart.indexOf(dup); }
+          else line.sale_unit = lv[n].key;
+          showStatus('الوحدة: ' + lv[n].label, 'ok');
+        }
+        renderCart(); markActive();
+      } catch (e) { showStatus('حدث خطأ في الاتصال بالسيرفر', 'err'); }
+      finally { sizeBusy = false; }
+    }
+
     $('cartBody').addEventListener('change', (e) => {
       if (e.target.dataset.unitIdx !== undefined) { cart[+e.target.dataset.unitIdx].sale_unit = e.target.value; renderCart(); }
       if (e.target.dataset.qin !== undefined) {
@@ -668,6 +716,16 @@
       return false;
     }
 
+    // كلمة الاختصار اللي الأدمن حددها للصنف: بتتضاف علطول (من غير رسالة خطأ لو مش مطابقة، نكمل للبحث العادي)
+    async function tryAlias(code) {
+      try {
+        const res = await fetch('/pos/lookup?alias=1&barcode=' + encodeURIComponent(code));
+        const data = await res.json();
+        if (data.found) { addToCart(data.medicine, data.medicine.default_level); return true; }
+      } catch (e) { /* نكمل بحث عادي */ }
+      return false;
+    }
+
     // قارئ الباركود: شغال حتى لو الماوس/الفوكس في أي مكان تاني في الصفحة (باركود أو سيريال)
     window.onBarcodeScan = (code) => {
       lookupAndAdd(code).then((ok) => { if (ok) { $('q').value = ''; hideResults(); } else { $('q').value = code; runSearch(code); } });
@@ -689,6 +747,8 @@
           return;
         }
         clearTimeout(debounce);
+        // كلمة اختصار صنف (كلمة واحدة): لو مطابقة لصنف بيتضاف للفاتورة علطول
+        if (/^\S{1,40}$/.test(code) && await tryAlias(code)) { $('q').value = ''; hideResults(); return; }
         if (code === shownQuery && results.length && selIdx >= 0) {
           addToCart(results[selIdx]);
           $('q').value = ''; hideResults();
@@ -807,8 +867,16 @@
       if (e && e.target === $('q') && results.length) return false;
       return fn() === false ? false : undefined;
     };
-    Shortcuts.on('pos_qty_up', cartKey(() => changeQty(1)));
-    Shortcuts.on('pos_qty_down', cartKey(() => changeQty(-1)));
+    // → / ← للكمية: لو بتكتب في خانة نص وفيها كلام نسيب السهم يحرّك المؤشر زي العادي
+    const qtyKey = (fn) => (e) => {
+      const t = e && e.target;
+      if (t && /^(INPUT|TEXTAREA)$/.test(t.tagName) && String(t.value || '').length) return false;
+      return cartKey(fn)(e);
+    };
+    Shortcuts.on('pos_qty_up', qtyKey(() => changeQty(1)));
+    Shortcuts.on('pos_qty_down', qtyKey(() => changeQty(-1)));
+    Shortcuts.on('pos_size_up', cartKey(() => { changeSize(1); }));
+    Shortcuts.on('pos_size_down', cartKey(() => { changeSize(-1); }));
     Shortcuts.on('pos_item_prev', cartKey(() => moveActive(-1)));
     Shortcuts.on('pos_item_next', cartKey(() => moveActive(1)));
     Shortcuts.on('pos_item_del', cartKey(() => removeActive()));

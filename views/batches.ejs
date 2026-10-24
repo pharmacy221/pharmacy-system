@@ -24,6 +24,10 @@
     .modal .err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 8px; }
     .inline-row { display: flex; gap: 8px; align-items: stretch; }
     .inline-row input { flex: 1; }
+    .cost-hint { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+    .cost-hint.warn { color: var(--amber); font-weight: 700; }
+    .pi-lines input.low { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245, 158, 11, .25); }
+    #camReader { width: 100%; min-height: 220px; }
     details.card > summary { cursor: pointer; font-size: 18px; font-weight: 700; }
   </style>
 </head>
@@ -123,7 +127,8 @@
       <h3>➕ إضافة صنف جديد</h3>
       <div class="field"><label>اسم الصنف *</label><input type="text" id="im_name" maxlength="200"></div>
       <div class="field"><label>الباركود (اسكنه دلوقتي أو ولّد واحد عشوائي)</label>
-        <div class="inline-row"><input type="text" id="im_barcode" dir="ltr" maxlength="64" placeholder="اسكن الباركود هنا..."><button type="button" class="btn-outline btn-sm" id="im_gen">🎲 توليد عشوائي</button></div></div>
+        <div class="inline-row"><input type="text" id="im_barcode" dir="ltr" maxlength="64" placeholder="اسكن الباركود هنا..."><button type="button" class="btn-outline btn-sm" id="im_cam" title="مسح بالكاميرا">📷</button><button type="button" class="btn-outline btn-sm" id="im_gen">🎲 توليد عشوائي</button></div>
+        <div class="scan-msg" id="im_scan"></div></div>
       <div class="form-grid">
         <div class="field"><label>النوع</label><select id="im_form"></select></div>
         <div class="field"><label>سعر بيع العلبة (اختياري)</label><input type="number" id="im_price" min="0" step="0.01" placeholder="0.00"></div>
@@ -131,10 +136,18 @@
         <div class="field" id="im_spbBox"><label>عدد الشرايط في العلبة</label><input type="number" id="im_spb" min="1" step="1" value="1"></div>
         <div class="field"><label>الشركة المصنّعة</label><input type="text" id="im_mfr" maxlength="150"></div>
         <div class="field"><label>السيريال (اختياري)</label><input type="text" id="im_serial" dir="ltr" maxlength="64"></div>
+        <div class="field"><label>كلمة اختصار للكاشير (اختياري)</label><input type="text" id="im_shortcut" maxlength="40" placeholder="كلمة واحدة، مثال: بنا"></div>
       </div>
+      <p style="color:var(--text-muted); font-size:12px; margin:0 0 6px;">كلمة الاختصار: تكتبها في خانة البحث في الكاشير وتدوس Enter فالصنف يتضاف للفاتورة علطول.</p>
       <p style="color:var(--text-muted); font-size:12px; margin:0;">سعر الشريط والحبة بيتحسبوا تلقائيًا من سعر العلبة، وتقدر تعدّلهم بعدين من صفحة الأصناف.</p>
       <div class="err" id="im_err"></div>
       <div class="actions"><button type="button" class="btn" id="im_save">حفظ وإضافة للطلبية</button><button type="button" class="btn-outline btn-sm" data-close="itemModal">إلغاء</button></div>
+    </div></div>
+
+    <div class="modal-bg" id="camModal"><div class="modal">
+      <h3>📷 وجّه الكاميرا على الباركود</h3>
+      <div id="camReader"></div>
+      <div class="actions"><button type="button" class="btn-outline btn-sm" data-close="camModal">إغلاق</button></div>
     </div></div>
     <% } %>
 
@@ -274,7 +287,7 @@
       '<td data-label="الصنف">' + esc(med.name) + '<div style="color:var(--text-muted);font-size:11px">' + esc(med.form || '') + '</div></td>' +
       '<td data-label="الوحدة"><select class="f-unit">' + levels.map(function (l) { return '<option value="' + l.key + '">' + esc(l.label) + '</option>'; }).join('') + '</select></td>' +
       '<td data-label="الكمية"><input type="number" min="1" step="1" class="f-qty" value="1"></td>' +
-      '<td data-label="سعر الوحدة"><input type="number" min="0" step="0.01" class="f-cost" placeholder="0.00"></td>' +
+      '<td data-label="سعر الوحدة"><input type="number" min="0" step="0.01" class="f-cost" placeholder="0.00"><div class="cost-hint"></div></td>' +
       '<td data-label="خصم الصنف %"><input type="number" min="0" max="100" step="0.01" class="f-disc" value="0"></td>' +
       '<td data-label="الصلاحية"><input type="date" class="f-exp"></td>' +
       '<td data-label="رقم التشغيلة"><input type="text" class="f-batch" maxlength="80"></td>' +
@@ -282,9 +295,40 @@
       '<td><button type="button" class="btn-ghost-sm f-del" title="حذف">✕</button></td>';
     tr.querySelector('.f-unit').value = med.default_unit;
     tbody.appendChild(tr);
+    prefillCost(tr);
     refresh();
-    tr.querySelector('.f-cost').focus();
+    var c = tr.querySelector('.f-cost'); c.focus(); if (c.select) c.select();
     return tr;
+  }
+
+  // ---------- آخر سعر شراء متسجّل للصنف: بنعبّيه تلقائيًا وبنحذّر لو السعر الجديد أقل ----------
+  function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+  function lastCostFor(med, unitKey) {
+    var lc = med && med.last_cost; if (!lc) return null;
+    var lv = med.levels.filter(function (l) { return l.key === unitKey; })[0];
+    return lv ? Math.round(lc.unit_cost * lv.qty * 100) / 100 : null;
+  }
+  function prefillCost(tr) {
+    var med = MEDS[tr.getAttribute('data-med')], cost = tr.querySelector('.f-cost');
+    var last = lastCostFor(med, tr.querySelector('.f-unit').value);
+    if (last !== null && (cost.value === '' || tr.getAttribute('data-auto') === '1')) { cost.value = fmt(last); tr.setAttribute('data-auto', '1'); }
+    costHint(tr);
+  }
+  function costHint(tr) {
+    var med = MEDS[tr.getAttribute('data-med')], cost = tr.querySelector('.f-cost'), hint = tr.querySelector('.cost-hint');
+    var unitSel = tr.querySelector('.f-unit'), unitName = unitSel.options[unitSel.selectedIndex].text;
+    var last = lastCostFor(med, unitSel.value), lc = med && med.last_cost;
+    cost.classList.remove('low'); hint.classList.remove('warn');
+    if (last === null) { hint.textContent = 'أول مرة تتسجّل للصنف ده (مفيش سعر قديم)'; return; }
+    var info = lc.source === 'avg'
+      ? 'متوسط التكلفة المسجّل: ' + fmt(last) + ' / ' + unitName
+      : 'آخر سعر: ' + fmt(last) + ' / ' + unitName + (lc.discount_percent > 0 ? ' (خصم ' + lc.discount_percent + '%)' : '') + (lc.date ? ' — ' + lc.date : '') + (lc.supplier ? ' — ' + lc.supplier : '');
+    var now = parseFloat(cost.value);
+    if (!isNaN(now) && cost.value !== '' && now < last - 0.005) {
+      var diff = last - now;
+      cost.classList.add('low'); hint.classList.add('warn');
+      hint.textContent = '⚠ تحذير: السعر أقل من المسجّل بـ ' + fmt(diff) + ' ج (' + Math.round(diff / last * 100) + '%) — اتأكد إنه مش غلطة. ' + info;
+    } else { hint.textContent = info; }
   }
 
   function rows() {
@@ -311,14 +355,20 @@
     $('grand').textContent = net.toFixed(2); $('remain').textContent = Math.max(net - paid, 0).toFixed(2);
     $('emptyLines').style.display = tbody.children.length ? 'none' : '';
   }
-  tbody.addEventListener('input', refresh);
+  tbody.addEventListener('input', function (e) {
+    var tr = e.target.closest('tr'); if (!tr) return;
+    if (e.target.classList.contains('f-cost')) { tr.setAttribute('data-auto', '0'); costHint(tr); }
+    else if (e.target.classList.contains('f-unit')) prefillCost(tr);
+    refresh();
+  });
   tbody.addEventListener('click', function (e) { if (e.target.classList.contains('f-del')) { e.target.closest('tr').remove(); refresh(); } });
   $('disc').addEventListener('input', refresh);
   $('paid').addEventListener('input', refresh);
 
   // ---------- قارئ الباركود: يضيف الصنف مباشرة (ولو اتمسح تاني نفس الصنف يزوّد الكمية) ----------
   window.onBarcodeScan = function (code) {
-    if ($('itemModal').style.display === 'flex') { $('im_barcode').value = code; $('im_name').focus(); return true; }
+    if ($('camModal').style.display === 'flex') return true;
+    if ($('itemModal').style.display === 'flex') { handleModalBarcode(code); return true; }
     getJson('/purchases/api/medicines?q=' + encodeURIComponent(code)).then(function (d) {
       if (d.exact && d.results.length) {
         var m = d.results[0], existing = tbody.querySelector('tr[data-med="' + m.id + '"]');
@@ -337,10 +387,10 @@
       .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || 'حصل خطأ'); return d; }); });
   }
   function openModal(id) { $(id).style.display = 'flex'; }
-  function closeModal(id) { $(id).style.display = 'none'; }
+  function closeModal(id) { $(id).style.display = 'none'; if (id === 'camModal') stopCam(); }
   document.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { closeModal(b.getAttribute('data-close')); }); });
-  document.querySelectorAll('.modal-bg').forEach(function (bg) { bg.addEventListener('mousedown', function (e) { if (e.target === bg) bg.style.display = 'none'; }); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.querySelectorAll('.modal-bg').forEach(function (bg) { bg.style.display = 'none'; }); });
+  document.querySelectorAll('.modal-bg').forEach(function (bg) { bg.addEventListener('mousedown', function (e) { if (e.target === bg) closeModal(bg.id); }); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.querySelectorAll('.modal-bg').forEach(function (bg) { closeModal(bg.id); }); });
 
   function openSupModal(name) {
     ['sm_company', 'sm_rep', 'sm_phone'].forEach(function (i) { $(i).value = ''; });
@@ -362,10 +412,57 @@
     $('im_spbBox').style.display = !f || (f.counted && f.strip) ? '' : 'none';
     $('im_upsBox').querySelector('label').textContent = f && f.strip ? 'عدد الحبات في الشريط' : 'عدد الوحدات في العلبة';
   }
+  // قارئ الباركود جاهز أول ما المودال يفتح: الخانة متفوكسة والسكانر بيكتب فيها، وبعد المسح المؤشر بينزل لاسم الصنف
+  function scanReady() { $('im_scan').textContent = '📡 جاهز للمسح — اسكن الباركود دلوقتي (أو اضغط 📷 للكاميرا)'; $('im_scan').className = 'scan-msg ok'; }
+  function handleModalBarcode(code) {
+    code = String(code || '').trim(); if (!code) return;
+    $('im_barcode').value = code; $('im_scan').className = 'scan-msg'; $('im_scan').textContent = 'جاري التحقق من الباركود...';
+    getJson('/purchases/api/medicines?q=' + encodeURIComponent(code)).then(function (d) {
+      if (d.exact && d.results.length) {
+        var m = d.results[0];
+        $('im_barcode').value = '';
+        $('im_scan').className = 'scan-msg err';
+        $('im_scan').innerHTML = '⚠ الباركود ' + esc(code) + ' مسجّل بالفعل للصنف «' + esc(m.name) + '» <button type="button" class="btn-ghost-sm" id="im_useExisting">إضافته للطلبية</button>';
+        $('im_useExisting').addEventListener('click', function () { closeModal('itemModal'); addLine(m); itemSearch.value = ''; msg('تمت إضافة: ' + m.name, 'ok'); });
+      } else {
+        $('im_scan').className = 'scan-msg ok'; $('im_scan').textContent = '✔ تم مسح الباركود: ' + code;
+        $('im_name').focus();
+      }
+    }).catch(function () { $('im_scan').className = 'scan-msg ok'; $('im_scan').textContent = 'تم مسح الباركود: ' + code; $('im_name').focus(); });
+  }
+  // كاميرا الموبايل/اللابتوب (المكتبة بتتحمّل أول ما تتطلب)
+  var cam = null;
+  function loadCamLib(cb) {
+    if (window.Html5Qrcode) return cb();
+    var s = document.createElement('script'); s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'; s.onload = cb;
+    s.onerror = function () { $('im_err').textContent = 'تعذّر تحميل مكتبة الكاميرا (تأكد من الإنترنت)'; };
+    document.head.appendChild(s);
+  }
+  function startCam() {
+    loadCamLib(function () {
+      openModal('camModal');
+      cam = new Html5Qrcode('camReader');
+      cam.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 160 } }, function (text) { closeModal('camModal'); handleModalBarcode(text); }, function () {})
+        .catch(function () { closeModal('camModal'); $('im_err').textContent = 'تعذّر فتح الكاميرا — اسمح بالصلاحيات'; });
+    });
+  }
+  function stopCam() {
+    if (!cam) return; var c = cam; cam = null;
+    try { c.stop().then(function () { c.clear(); }).catch(function () {}); } catch (e) {}
+  }
+  $('im_cam').addEventListener('click', startCam);
+  $('im_barcode').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if ($('im_barcode').value.trim()) handleModalBarcode($('im_barcode').value); } });
+
   function openItemModal(name) {
-    ['im_barcode', 'im_serial', 'im_mfr', 'im_price'].forEach(function (i) { $(i).value = ''; });
-    $('im_ups').value = 1; $('im_spb').value = 1; $('im_name').value = name || ''; $('im_err').textContent = ''; itemList.style.display = 'none';
-    var show = function () { openModal('itemModal'); (name ? $('im_barcode') : $('im_name')).focus(); };
+    name = String(name || '').trim();
+    var isCode = /^[0-9]{6,}$/.test(name);   // لو اللي اتكتب/اتمسح باركود (أرقام) نحطه في خانة الباركود مش الاسم
+    ['im_barcode', 'im_serial', 'im_mfr', 'im_price', 'im_shortcut'].forEach(function (i) { $(i).value = ''; });
+    $('im_ups').value = 1; $('im_spb').value = 1; $('im_name').value = isCode ? '' : name; $('im_err').textContent = ''; itemList.style.display = 'none';
+    $('im_scan').textContent = ''; $('im_scan').className = 'scan-msg';
+    var show = function () {
+      openModal('itemModal');
+      if (isCode) { handleModalBarcode(name); } else { $('im_barcode').focus(); scanReady(); }
+    };
     if (FORMS) { show(); return; }
     getJson('/purchases/api/forms').then(function (d) {
       FORMS = d.forms;
@@ -386,7 +483,8 @@
     $('im_err').textContent = '';
     postJson('/purchases/api/medicines/add', {
       name: $('im_name').value, barcode: $('im_barcode').value, form_kind: $('im_form').value, sale_price_box: $('im_price').value,
-      units_per_strip: $('im_ups').value, strips_per_box: $('im_spb').value, manufacturer: $('im_mfr').value, serial_number: $('im_serial').value
+      units_per_strip: $('im_ups').value, strips_per_box: $('im_spb').value, manufacturer: $('im_mfr').value, serial_number: $('im_serial').value,
+      shortcut_code: $('im_shortcut').value
     }).then(function (d) { closeModal('itemModal'); addLine(d.medicine); itemSearch.value = ''; msg('تمت إضافة الصنف الجديد: ' + d.medicine.name, 'ok'); })
       .catch(function (e) { $('im_err').textContent = e.message; });
   });
