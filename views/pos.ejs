@@ -146,6 +146,7 @@
             <h2>الفاتورة <span id="cartCount" style="color:var(--text-muted); font-size:13px;"></span></h2>
             <button type="button" class="link-btn" id="clearCartBtn">تفريغ الفاتورة</button>
           </div>
+          <div id="addonsBox" style="display:none; margin-bottom:10px; padding:10px 12px; border:1px dashed var(--accent); border-radius:10px; background:var(--accent-soft);"></div>
           <div style="overflow-x:auto;">
             <table class="t">
               <thead>
@@ -409,16 +410,76 @@
     });
 
     // ---------- السلة ----------
+    function pushLine(m, unit, qty) {
+      const ex = cart.find((i) => i.m.id === m.id && i.sale_unit === unit);
+      if (ex) ex.quantity += qty; else cart.push({ m, sale_unit: unit, quantity: qty });
+      activeIdx = ex ? cart.indexOf(ex) : cart.length - 1; // آخر صنف اتضاف هو المحدد
+    }
     function addToCart(m, unit) {
       if (!m) return;
       if (Number(m.stock_units) <= 0) { showStatus('الصنف نفذ من المخزون: ' + m.name, 'err'); return; }
       unit = unit || m.default_level;
-      const ex = cart.find((i) => i.m.id === m.id && i.sale_unit === unit);
-      if (ex) ex.quantity += 1; else cart.push({ m, sale_unit: unit, quantity: 1 });
-      activeIdx = ex ? cart.indexOf(ex) : cart.length - 1; // آخر صنف اتضاف هو المحدد
+      const unitsPerLine = levelQty(m, unit);
+      pushLine(m, unit, 1);
       showStatus('تمت إضافة: ' + m.name, 'ok');
       renderCart();
+      loadAddons(m, unitsPerLine);
     }
+
+    // ---------- المستلزمات المرتبطة (سرنجة / كحول / كانيولا ...) ----------
+    // auto_add: بيتضاف للفاتورة علطول (بكمية حسب الصنف)، والباقي بيظهر كاقتراحات تختار منها وتدوس "إضافة".
+    const addonCache = new Map();   // id الصنف -> { at, list }
+    let addonSugg = [];             // الاقتراحات الظاهرة حاليًا
+    async function addonsOf(m) {
+      const hit = addonCache.get(m.id);
+      if (hit && Date.now() - hit.at < 30000) return hit.list;
+      const res = await fetch('/pos/addons?id=' + m.id);
+      const data = await res.json();
+      const list = data.addons || [];
+      addonCache.set(m.id, { at: Date.now(), list });
+      return list;
+    }
+    async function loadAddons(m, mult) {
+      try {
+        const list = await addonsOf(m);
+        if (!list.length) { return; }
+        const auto = [], sugg = [];
+        list.forEach((a) => (a.auto_add ? auto : sugg).push(a));
+        const noStock = [];
+        auto.forEach((a) => {
+          if (Number(a.stock_units) <= 0) { noStock.push(a.name); return; }
+          pushLine(a, 'unit', Number(a.addon_qty || 1) * (mult || 1));
+        });
+        if (noStock.length) showStatus('مستلزم غير متاح في المخزون: ' + noStock.join('، '), 'err');
+        // نكمّل الاقتراحات (نضيف الجديد فقط، ونشيل اللي اتضاف فعلًا في الفاتورة)
+        sugg.forEach((a) => { if (!addonSugg.some((x) => x.id === a.id)) addonSugg.push({ ...a, _mult: mult || 1 }); });
+        if (auto.length) { activeIdx = cart.findIndex((i) => i.m.id === m.id); renderCart(); }
+        renderAddons();
+      } catch (e) { /* لو الجدول مش موجود أو حصل خطأ، الكاشير يكمل عادي */ }
+    }
+    function renderAddons() {
+      const box = $('addonsBox');
+      addonSugg = addonSugg.filter((a) => !cart.some((i) => i.m.id === a.id));
+      if (!addonSugg.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = 'block';
+      box.innerHTML = `<div style="font-weight:600; margin-bottom:6px;">مستلزمات مقترحة</div>` +
+        addonSugg.map((a, n) => {
+          const out = Number(a.stock_units) <= 0;
+          return `<label style="display:inline-flex; align-items:center; gap:6px; margin:0 0 6px 14px; ${out ? 'opacity:.5;' : ''}">
+            <input type="checkbox" data-addon="${n}" ${a.default_checked && !out ? 'checked' : ''} ${out ? 'disabled' : ''}>
+            ${esc(a.name)} <small style="color:var(--text-muted);">${money(levelPrice(a, 'unit'))}${a.addon_label ? ' · ' + esc(a.addon_label) : ''}${out ? ' · نفد' : ''}</small></label>`;
+        }).join('') +
+        `<div><button type="button" class="btn-ghost-sm" id="addonsAddBtn">إضافة المحدد</button> <button type="button" class="link-btn" id="addonsHideBtn">تجاهل</button></div>`;
+    }
+    $('addonsBox').addEventListener('click', (e) => {
+      if (e.target.id === 'addonsHideBtn') { addonSugg = []; renderAddons(); return; }
+      if (e.target.id !== 'addonsAddBtn') return;
+      const boxes = Array.from($('addonsBox').querySelectorAll('input[data-addon]:checked'));
+      boxes.forEach((b) => { const a = addonSugg[+b.dataset.addon]; if (a) pushLine(a, 'unit', Number(a.addon_qty || 1) * (a._mult || 1)); });
+      addonSugg = addonSugg.filter((a) => !cart.some((i) => i.m.id === a.id));
+      renderCart(); renderAddons();
+      if (boxes.length) showStatus('تمت إضافة المستلزمات', 'ok');
+    });
 
     function lineUnits(i) { return i.quantity * levelQty(i.m, i.sale_unit); }
     function totalUnitsFor(id) { return cart.filter((i) => i.m.id === id).reduce((s, i) => s + lineUnits(i), 0); }
@@ -548,7 +609,7 @@
         const n = parseInt(e.target.value) || 1; cart[+e.target.dataset.qin].quantity = Math.max(n, 1); renderCart();
       }
     });
-    $('clearCartBtn').addEventListener('click', () => { if ((cart.length || $('notes').value || $('customerName').value) && confirm('تفريغ الصفحة بالكامل (الأصناف وبيانات العميل والخصم)؟')) { cart = []; activeIdx = -1; appliedCoupon = null; $('couponStatus').textContent = ''; FIELD_IDS.forEach((id) => { $(id).value = id === 'discountValue' || id === 'paidNow' ? '0' : (id === 'discountType' ? 'amount' : ''); }); clearCustomer(); updateSummary(); renderCart(); clearDraft(); } });
+    $('clearCartBtn').addEventListener('click', () => { if ((cart.length || $('notes').value || $('customerName').value) && confirm('تفريغ الصفحة بالكامل (الأصناف وبيانات العميل والخصم)؟')) { cart = []; activeIdx = -1; addonSugg = []; renderAddons(); appliedCoupon = null; $('couponStatus').textContent = ''; FIELD_IDS.forEach((id) => { $(id).value = id === 'discountValue' || id === 'paidNow' ? '0' : (id === 'discountType' ? 'amount' : ''); }); clearCustomer(); updateSummary(); renderCart(); clearDraft(); } });
 
     function subtotal() { return cart.reduce((s, i) => s + levelPrice(i.m, i.sale_unit) * i.quantity, 0); }
     function manualDiscount(sub) {

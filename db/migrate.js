@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('./index');
 
-const FILES = ['migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql', 'migration_005_customers_credit_compliance.sql', 'migration_006_price_history.sql', 'migration_007_no_credit_limit.sql', 'migration_008_order_discount_supplier_company.sql', 'migration_009_item_discount.sql', 'migration_010_shortcut_sizes.sql'];
+const FILES = ['migration_002_integrity_fixes.sql', 'migration_003_pharmacy_date_views.sql', 'migration_004_purchases.sql', 'migration_005_customers_credit_compliance.sql', 'migration_006_price_history.sql', 'migration_007_no_credit_limit.sql', 'migration_008_order_discount_supplier_company.sql', 'migration_009_item_discount.sql', 'migration_010_shortcut_sizes.sql', 'migration_011_addons.sql'];
 
 async function main() {
   const statusOnly = process.argv.includes('--status');

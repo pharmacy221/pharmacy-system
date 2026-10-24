@@ -154,6 +154,25 @@ router.get('/sizes', async (req, res, next) => {
   }
 });
 
+// المستلزمات المرتبطة بصنف (سرنجة / كحول / كانيولا ...) — auto_add = يتضاف علطول، والباقي اقتراحات
+router.get('/addons', async (req, res, next) => {
+  try {
+    const id = parseInt(req.query.id, 10) || 0;
+    let links = [];
+    try {
+      links = await query(
+        `SELECT a.*, x.qty_units AS addon_qty, x.auto_add, x.default_checked, x.label AS addon_label, x.sort_order
+         FROM medicine_addons x JOIN medicines a ON a.id = x.addon_id
+         WHERE x.medicine_id = $1 AND a.is_active = true
+         ORDER BY x.sort_order, a.id`, [id]);
+    } catch (e) { return res.json({ addons: [] }); } // migration_011 لسه متطبقتش
+    const rows = (await withSellableStock(links)).map(withLevels);
+    res.json({ addons: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // التحقق من كوبون (معاينة بدون استخدامه فعلياً)
 router.get('/coupon-check', async (req, res, next) => {
   try {
