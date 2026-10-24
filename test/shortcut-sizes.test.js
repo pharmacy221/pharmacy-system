@@ -18,7 +18,7 @@ describe('كلمة الاختصار + المقاسات + آخر سعر شراء'
   it('آخر سعر شراء: بيرجع لكل صنف بسعر الحبة قبل الخصم، وأول مرة = متوسط التكلفة أو null', async () => {
     const med = await T.addMedicine(db, { name: 'lastcost-a', ups: 10, spb: 2, cost: 0 });
     let r = await app.request('GET', '/purchases/api/medicines?q=lastcost-a', { user: T.PHARMA });
-    assert.equal(r.json.results[0].last_cost, null);
+    assert.equal(r.json.results[0].last_cost.source, 'sale');   // مفيش فواتير: بياخد سعر البيع المسجّل (10)
 
     const item = (cost, disc = 0) => ({ medicine_id: med, unit: 'box', quantity: 2, cost, discount_percent: disc, expiry_date: '2099-01-01', batch_number: 'B' });
     const mk = (cost, disc) => app.request('POST', '/purchases/create', { user: T.ADMIN, form: { supplier_id: String(sup), items_json: JSON.stringify([item(cost, disc)]), method: 'cash' } });
@@ -42,11 +42,25 @@ describe('كلمة الاختصار + المقاسات + آخر سعر شراء'
     assert.equal(r.json.results[0].last_cost.unit_cost, 2);
   });
 
-  it('صنف مفيش له فواتير شراء: بيرجع متوسط التكلفة المسجّل (source=avg)', async () => {
-    await T.addMedicine(db, { name: 'avgcost-b', ups: 1, spb: 1, cost: 7.5 });
-    const r = await app.request('GET', '/purchases/api/medicines?q=avgcost-b', { user: T.PHARMA });
+  it('صنف مفيش له فواتير شراء: السعر الرسمي ← سعر البيع المسجّل ← متوسط التكلفة', async () => {
+    const mk = (name, price, cost, spb = 1) => db.q1(`INSERT INTO medicines (name, units_per_strip, strips_per_box, sale_price_unit, sale_price_box, cost_price_unit, stock_units) VALUES ($1,1,$4,$2,NULL,$3,0) RETURNING id`, [name, price, cost, spb]).then((r) => r.id);
+    await mk('salecost-b', 12, 7.5);
+    let r = await app.request('GET', '/purchases/api/medicines?q=salecost-b', { user: T.PHARMA });
+    assert.equal(r.json.results[0].last_cost.source, 'sale');
+    assert.equal(r.json.results[0].last_cost.unit_cost, 12);
+    await mk('avgcost-b', 0, 7.5);
+    r = await app.request('GET', '/purchases/api/medicines?q=avgcost-b', { user: T.PHARMA });
     assert.equal(r.json.results[0].last_cost.source, 'avg');
     assert.equal(r.json.results[0].last_cost.unit_cost, 7.5);
+    // السعر الرسمي من دليل الأدوية (لو الجدول والعمود موجودين)
+    await db.q(`CREATE TABLE IF NOT EXISTS drug_reference (id SERIAL PRIMARY KEY, name_en TEXT, price_egp NUMERIC(12,2))`);
+    await db.q(`ALTER TABLE medicines ADD COLUMN IF NOT EXISTS ref_id INTEGER`);
+    const ref = await db.q1(`INSERT INTO drug_reference (name_en, price_egp) VALUES ('REFDRUG', 100) RETURNING id`);
+    const id = await mk('officialcost-b', 12, 7.5, 4);
+    await db.q('UPDATE medicines SET ref_id = $1 WHERE id = $2', [ref.id, id]);
+    r = await app.request('GET', '/purchases/api/medicines?q=officialcost-b', { user: T.PHARMA });
+    assert.equal(r.json.results[0].last_cost.source, 'official');
+    assert.equal(r.json.results[0].last_cost.unit_cost, 25);   // علبة 100 / 4 وحدات
   });
 
   it('إضافة صنف جديد من صفحة التشغيلات بكلمة اختصار، والتكرار مرفوض بدون حساسية لحالة الحروف', async () => {

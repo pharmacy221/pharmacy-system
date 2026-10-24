@@ -326,12 +326,12 @@
     var unitSel = tr.querySelector('.f-unit'), unitName = unitSel.options[unitSel.selectedIndex].text;
     var last = lastCostFor(med, unitSel.value), lc = med && med.last_cost;
     cost.classList.remove('low'); hint.classList.remove('warn');
-    if (last === null) { hint.textContent = 'أول مرة تتسجّل للصنف ده (مفيش سعر قديم)'; return; }
-    var info = lc.source === 'avg'
-      ? 'متوسط التكلفة المسجّل: ' + fmt(last) + ' / ' + unitName
-      : 'آخر سعر: ' + fmt(last) + ' / ' + unitName + (lc.discount_percent > 0 ? ' (خصم ' + lc.discount_percent + '%)' : '') + (lc.date ? ' — ' + lc.date : '') + (lc.supplier ? ' — ' + lc.supplier : '');
+    if (last === null) { hint.textContent = 'مفيش سعر مسجّل للصنف ده — اكتب السعر'; return; }
+    var info = lc.source === 'invoice'
+      ? 'آخر سعر شراء: ' + fmt(last) + ' / ' + unitName + (lc.discount_percent > 0 ? ' (خصم ' + lc.discount_percent + '%)' : '') + (lc.date ? ' — ' + lc.date : '') + (lc.supplier ? ' — ' + lc.supplier : '')
+      : (lc.source === 'official' ? 'السعر الموحّد (الرسمي): ' : lc.source === 'sale' ? 'السعر المسجّل للصنف: ' : 'متوسط التكلفة المسجّل: ') + fmt(last) + ' / ' + unitName + ' — تقدر تعدّله';
     var now = parseFloat(cost.value);
-    if (!isNaN(now) && cost.value !== '' && now < last - 0.005) {
+    if (lc.source === 'invoice' && !isNaN(now) && cost.value !== '' && now < last - 0.005) {
       var diff = last - now;
       cost.classList.add('low'); hint.classList.add('warn');
       hint.textContent = '⚠ تحذير: السعر أقل من المسجّل بـ ' + fmt(diff) + ' ج (' + Math.round(diff / last * 100) + '%) — اتأكد إنه مش غلطة. ' + info;

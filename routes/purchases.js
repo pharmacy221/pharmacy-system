@@ -98,14 +98,29 @@ async function attachLastCosts(rows, shaped) {
      WHERE i.medicine_id = ANY($1::int[])
      ORDER BY i.medicine_id, pi.invoice_date DESC, i.id DESC`, [ids]);
   const byId = new Map(last.map((r) => [r.medicine_id, r]));
+  // السعر الرسمي (الموحّد) للعلبة من دليل الأدوية، لو الصنف مربوط بيه
+  let official = new Map();
+  try {
+    const refs = await query(
+      `SELECT m.id, d.price_egp FROM medicines m JOIN drug_reference d ON d.id = m.ref_id
+       WHERE m.id = ANY($1::int[]) AND d.price_egp > 0`, [ids]);
+    official = new Map(refs.map((r) => [r.id, Number(r.price_egp)]));
+  } catch (e) { /* دليل الأدوية مش متركّب */ }
+  // الأولوية: آخر فاتورة شراء ← السعر الرسمي ← سعر البيع المسجّل في الأصناف ← متوسط التكلفة
   return shaped.map((m, idx) => {
-    const l = byId.get(m.id);
+    const l = byId.get(m.id), r = rows[idx];
+    const total = Math.max((parseInt(r.units_per_strip, 10) || 1) * (parseInt(r.strips_per_box, 10) || 1), 1);
     if (l && l.unit_cost != null) {
       const d = l.invoice_date instanceof Date ? l.invoice_date.toISOString().slice(0, 10) : String(l.invoice_date).slice(0, 10);
       return { ...m, last_cost: { unit_cost: l.unit_cost, discount_percent: l.discount_percent || 0, date: d, supplier: l.supplier_name || null, source: 'invoice' } };
     }
-    const avg = Number(rows[idx].cost_price_unit);
-    return { ...m, last_cost: avg > 0 ? { unit_cost: avg, discount_percent: 0, date: null, supplier: null, source: 'avg' } : null };
+    const mk = (unit_cost, source) => ({ ...m, last_cost: { unit_cost, discount_percent: 0, date: null, supplier: null, source } });
+    if (official.get(m.id)) return mk(official.get(m.id) / total, 'official');
+    const box = Number(r.sale_price_box), unit = Number(r.sale_price_unit);
+    if (box > 0) return mk(box / total, 'sale');
+    if (unit > 0) return mk(unit, 'sale');
+    const avg = Number(r.cost_price_unit);
+    return avg > 0 ? mk(avg, 'avg') : { ...m, last_cost: null };
   });
 }
 
@@ -122,7 +137,7 @@ router.get('/api/medicines', async (req, res, next) => {
     const iPrefix = params.length;
     const rows = await query(
       `SELECT id, name, generic_name, manufacturer, barcode, serial_number, form_kind, dosage_form,
-              units_per_strip, strips_per_box, stock_units, cost_price_unit
+              units_per_strip, strips_per_box, stock_units, cost_price_unit, sale_price_unit, sale_price_box
        FROM medicines
        WHERE is_active = true AND (barcode = $1 OR serial_number = $1 OR (${where.join(' AND ')}))
        ORDER BY (barcode = $1 OR serial_number = $1) DESC, (${SQL_NORM('name')} LIKE $${iPrefix}) DESC, lower(name)
