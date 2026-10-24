@@ -165,6 +165,21 @@
           <div class="sumrow"><span>المجموع الفرعي</span><span class="mono" id="cartSubtotal">0.00</span></div>
           <div class="sumrow disc"><span>الخصم</span><span class="mono v" id="cartDiscount">0.00</span></div>
 
+          <!-- المبلغ اللي العميل دفعه: حاسبة سريعة (الباقي له / فاضل عليه) من غير ما تدخل بيانات العميل -->
+          <div class="field" id="tenderBox" style="margin-top:12px;">
+            <label>💵 المبلغ اللي العميل دفعه</label>
+            <input type="number" id="tendered" min="0" step="0.01" placeholder="اكتب المبلغ..." inputmode="decimal">
+            <div id="tenderQuick" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+              <button type="button" class="btn-ghost-sm" data-t="exact">المظبوط</button>
+              <button type="button" class="btn-ghost-sm" data-t="50">50</button>
+              <button type="button" class="btn-ghost-sm" data-t="100">100</button>
+              <button type="button" class="btn-ghost-sm" data-t="200">200</button>
+              <button type="button" class="btn-ghost-sm" data-t="500">500</button>
+            </div>
+            <div id="tenderResult" style="display:none; margin-top:8px; padding:10px 12px; border-radius:10px; font-weight:700; font-size:18px; text-align:center;"></div>
+            <button type="button" class="btn-ghost-sm" id="tenderCreditBtn" style="display:none; margin-top:6px; width:100%;">سجّل الباقي آجل على العميل</button>
+          </div>
+
           <hr style="border:0; border-top:1px dashed var(--border); margin:12px 0;">
 
           <div class="field">
@@ -756,7 +771,42 @@
       $('cartDiscount').textContent = money(disc);
       $('cartTotal').textContent = money(Math.max(0, sub - disc));
       refreshExtras();
+      updateTender();
     }
+
+    // ---------- المبلغ اللي العميل دفعه: الباقي له / فاضل عليه ----------
+    function updateTender() {
+      const total = parseFloat($('cartTotal').textContent) || 0;
+      const raw = $('tendered').value.trim();
+      const box = $('tenderResult'), cbtn = $('tenderCreditBtn');
+      cbtn.style.display = 'none';
+      if (raw === '' || !cart.length) { box.style.display = 'none'; return; }
+      const t = Math.max(parseFloat(raw) || 0, 0);
+      const diff = Math.round((t - total) * 100) / 100;
+      box.style.display = 'block';
+      if (diff >= 0) {
+        box.style.background = 'rgba(25,135,84,.18)'; box.style.color = 'var(--accent, #19c37d)';
+        box.textContent = diff === 0 ? '✓ المبلغ مظبوط' : 'الباقي للعميل: ' + money(diff) + ' ج.م';
+      } else {
+        box.style.background = 'rgba(255,193,7,.16)'; box.style.color = 'var(--amber, #f0ad4e)';
+        box.textContent = 'فاضل عليه: ' + money(-diff) + ' ج.م';
+        if (!isCredit()) cbtn.style.display = 'block';
+      }
+      if (isCredit()) $('paidNow').value = String(Math.min(t, total)); // في البيع الآجل المبلغ بيتنقل لخانة "المدفوع دلوقتي"
+      if (isCredit()) refreshExtras();
+    }
+    $('tendered').addEventListener('input', updateTender);
+    $('tenderQuick').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-t]'); if (!b) return;
+      $('tendered').value = b.dataset.t === 'exact' ? (parseFloat($('cartTotal').textContent) || 0).toFixed(2) : b.dataset.t;
+      updateTender();
+    });
+    $('tenderCreditBtn').addEventListener('click', () => {
+      const t = Math.max(parseFloat($('tendered').value) || 0, 0);
+      $('paidNow').value = String(t);
+      setSaleType(true);   // بيفتح اختيار العميل (إجباري في الآجل)
+      updateTender();
+    });
     $('discountValue').addEventListener('input', updateSummary);
     $('discountType').addEventListener('change', updateSummary);
     $('payTabs').addEventListener('click', (e) => {
@@ -918,6 +968,7 @@
     Shortcuts.on('pos_pay_cash', payBtn('cash'));
     Shortcuts.on('pos_pay_card', payBtn('card'));
     Shortcuts.on('pos_pay_other', payBtn('other'));
+    Shortcuts.on('pos_tendered', focusEl('tendered'));
     Shortcuts.on('pos_discount', focusEl('discountValue'));
     Shortcuts.on('pos_coupon', focusEl('couponInput'));
     Shortcuts.on('pos_customer', () => focusEl(isCredit() ? 'creditSearch' : 'customerName')());
@@ -946,7 +997,7 @@
     // المسودة بتتحفظ في المتصفح لكل مستخدم، وبتتمسح بعد البيع الناجح أو بزرار «تفريغ الفاتورة».
     const DRAFT_KEY = 'pos_draft_v1:<%= username || "" %>';
     const DRAFT_TTL = 12 * 3600 * 1000;
-    const FIELD_IDS = ['discountValue', 'discountType', 'notes', 'customerName', 'customerPhone', 'couponInput', 'paidNow', 'ctrlPatient', 'ctrlNid', 'ctrlRx', 'ctrlDoctor'];
+    const FIELD_IDS = ['tendered', 'discountValue', 'discountType', 'notes', 'customerName', 'customerPhone', 'couponInput', 'paidNow', 'ctrlPatient', 'ctrlNid', 'ctrlRx', 'ctrlDoctor'];
     let restoring = true, draftTimer;
     function saveDraft() {
       if (restoring) return;
