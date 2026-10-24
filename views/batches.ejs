@@ -62,7 +62,11 @@
       <input type="hidden" name="supplier_id" id="supplierId">
 
       <div class="card">
-        <h2>استلام طلبية جديدة</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <h2 style="margin:0;">استلام طلبية جديدة</h2>
+          <span style="display:flex; align-items:center; gap:8px;"><span id="draftNote" style="color:var(--text-muted); font-size:12px;"></span>
+          <button type="button" class="btn-ghost-sm" id="clearDraftBtn">🗑️ تفريغ الصفحة</button></span>
+        </div>
         <div class="form-grid">
           <div class="field dd-wrap">
             <label style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><span>المورد * (بالاسم أو الشركة أو المندوب)</span>
@@ -256,11 +260,13 @@
   }
 
   // ---------- المورد ----------
+  var curSup = null;
   function selectSupplier(s) {
+    curSup = s;
     $('supplierId').value = s.id; supSearch.value = ''; supSearch.style.display = 'none';
     var chip = $('supChip'); chip.style.display = 'block';
     chip.innerHTML = '<span class="chip">' + esc(s.name) + (s.company ? ' — ' + esc(s.company) : '') + ' <a href="#" id="supChange" style="font-size:12px">تغيير</a></span>';
-    $('supChange').addEventListener('click', function (e) { e.preventDefault(); $('supplierId').value = ''; chip.style.display = 'none'; supSearch.style.display = ''; supSearch.focus(); });
+    $('supChange').addEventListener('click', function (e) { e.preventDefault(); $('supplierId').value = ''; curSup = null; chip.style.display = 'none'; supSearch.style.display = ''; supSearch.focus(); });
     itemSearch.focus();
   }
   Dropdown(supSearch, supList,
@@ -278,7 +284,7 @@
     },
     function (m) { if (m.__new) { openItemModal(m.q); return; } addLine(m); itemSearch.value = ''; msg(''); });
 
-  function addLine(med) {
+  function addLine(med, restoring) {
     MEDS[med.id] = med;
     var tr = document.createElement('tr');
     tr.setAttribute('data-med', med.id);
@@ -295,6 +301,7 @@
       '<td><button type="button" class="btn-ghost-sm f-del" title="حذف">✕</button></td>';
     tr.querySelector('.f-unit').value = med.default_unit;
     tbody.appendChild(tr);
+    if (restoring) return tr;
     prefillCost(tr);
     refresh();
     var c = tr.querySelector('.f-cost'); c.focus(); if (c.select) c.select();
@@ -489,6 +496,54 @@
       .catch(function (e) { $('im_err').textContent = e.message; });
   });
 
+  // ---------- حفظ الطلبية تلقائيًا: الرفرش مايضيّعش حاجة، وبتتمسح بعد التسجيل الناجح أو بزرار «تفريغ الصفحة» ----------
+  var DRAFT_KEY = 'batches_draft_v1:<%= username || "" %>', DRAFT_TTL = 24 * 3600 * 1000, FIELDS = ['invoice_number', 'invoice_date', 'due_date', 'discount_percent', 'paid_amount', 'method', 'notes'];
+  var restoringDraft = true, draftTimer;
+  function saveDraft() {
+    if (restoringDraft) return;
+    try {
+      var form = $('piForm'), fields = {};
+      FIELDS.forEach(function (n) { fields[n] = form.elements[n].value; });
+      var lines = Array.prototype.map.call(tbody.querySelectorAll('tr'), function (tr) {
+        return { med: MEDS[tr.getAttribute('data-med')], unit: tr.querySelector('.f-unit').value, qty: tr.querySelector('.f-qty').value, cost: tr.querySelector('.f-cost').value,
+          disc: tr.querySelector('.f-disc').value, exp: tr.querySelector('.f-exp').value, batch: tr.querySelector('.f-batch').value, auto: tr.getAttribute('data-auto') };
+      });
+      if (!lines.length && !curSup) { localStorage.removeItem(DRAFT_KEY); return; }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), supplier: curSup, fields: fields, lines: lines }));
+      $('draftNote').textContent = '💾 محفوظة تلقائيًا';
+    } catch (e) { /* التخزين مش متاح: نكمل عادي */ }
+  }
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} $('draftNote').textContent = ''; }
+  function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+  ['input', 'change', 'click'].forEach(function (ev) { $('piForm').addEventListener(ev, scheduleDraft, true); });
+  window.addEventListener('beforeunload', saveDraft);
+  function restoreDraft() {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) {}
+    if (!d || Date.now() - d.at > DRAFT_TTL) { clearDraft(); return; }
+    try {
+      var form = $('piForm');
+      FIELDS.forEach(function (n) { if (d.fields && d.fields[n] != null && d.fields[n] !== '') form.elements[n].value = d.fields[n]; });
+      if (d.supplier) selectSupplier(d.supplier);
+      (d.lines || []).forEach(function (l) {
+        if (!l.med) return;
+        var tr = addLine(l.med, true);
+        tr.querySelector('.f-unit').value = l.unit; tr.querySelector('.f-qty').value = l.qty; tr.querySelector('.f-cost').value = l.cost;
+        tr.querySelector('.f-disc').value = l.disc; tr.querySelector('.f-exp').value = l.exp; tr.querySelector('.f-batch').value = l.batch;
+        tr.setAttribute('data-auto', l.auto || '0'); costHint(tr);
+      });
+      refresh();
+      if (tbody.children.length || d.supplier) { $('draftNote').textContent = '↩️ اتسترجعت الطلبية اللي كانت مفتوحة'; itemSearch.blur(); }
+    } catch (e) { /* مسودة تالفة */ }
+  }
+  $('clearDraftBtn').addEventListener('click', function () {
+    if ((tbody.children.length || curSup) && !confirm('تفريغ الصفحة بالكامل (المورد والأصناف وكل البيانات)؟')) return;
+    tbody.innerHTML = ''; curSup = null; $('supplierId').value = ''; $('supChip').style.display = 'none'; supSearch.style.display = ''; supSearch.value = '';
+    var form = $('piForm');
+    FIELDS.forEach(function (n) { var el = form.elements[n]; el.value = (n === 'discount_percent' || n === 'paid_amount') ? '0' : (n === 'invoice_date' ? '<%= today %>' : (n === 'method' ? 'cash' : '')); });
+    refresh(); msg(''); clearDraft();
+  });
+
   $('piForm').addEventListener('submit', function (e) {
     var rs = rows();
     if (!$('supplierId').value) { e.preventDefault(); alert('اختار المورد الأول'); supSearch.focus(); return; }
@@ -498,11 +553,14 @@
       if (rs[i].cost === '') { e.preventDefault(); alert('البند رقم ' + (i + 1) + ': اكتب سعر الوحدة'); return; }
     }
     $('itemsJson').value = JSON.stringify(rs.map(function (r) { delete r._tr; return r; }));
+    try { localStorage.setItem('batches_submitting', String(Date.now())); } catch (er) {}
     $('submitBtn').disabled = true;
   });
   // Enter جوه خانات الفورم مايبعتش الفورم بالغلط
   $('piForm').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); });
   refresh();
+  restoreDraft();
+  restoringDraft = false;
 })();
 </script>
 <% } %>

@@ -548,7 +548,7 @@
         const n = parseInt(e.target.value) || 1; cart[+e.target.dataset.qin].quantity = Math.max(n, 1); renderCart();
       }
     });
-    $('clearCartBtn').addEventListener('click', () => { if (cart.length && confirm('تفريغ الفاتورة؟')) { cart = []; activeIdx = -1; appliedCoupon = null; $('couponStatus').textContent = ''; renderCart(); } });
+    $('clearCartBtn').addEventListener('click', () => { if ((cart.length || $('notes').value || $('customerName').value) && confirm('تفريغ الصفحة بالكامل (الأصناف وبيانات العميل والخصم)؟')) { cart = []; activeIdx = -1; appliedCoupon = null; $('couponStatus').textContent = ''; FIELD_IDS.forEach((id) => { $(id).value = id === 'discountValue' || id === 'paidNow' ? '0' : (id === 'discountType' ? 'amount' : ''); }); clearCustomer(); updateSummary(); renderCart(); clearDraft(); } });
 
     function subtotal() { return cart.reduce((s, i) => s + levelPrice(i.m, i.sale_unit) * i.quantity, 0); }
     function manualDiscount(sub) {
@@ -838,7 +838,7 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (data.ok) window.location.href = '/pos/receipt/' + data.invoiceId; else fail(data.error || 'حدث خطأ، يرجى المحاولة لاحقاً');
+        if (data.ok) { restoring = true; clearDraft(); window.location.href = '/pos/receipt/' + data.invoiceId; } else fail(data.error || 'حدث خطأ، يرجى المحاولة لاحقاً');
       } catch (e) { fail('حدث خطأ في الاتصال بالسيرفر'); }
     }
     $('checkoutBtn').addEventListener('click', doCheckout);
@@ -881,7 +881,59 @@
     Shortcuts.on('pos_item_next', cartKey(() => moveActive(1)));
     Shortcuts.on('pos_item_del', cartKey(() => removeActive()));
 
+    // ---------- حفظ الفاتورة تلقائيًا (الرفرش مايضيّعش حاجة) ----------
+    // المسودة بتتحفظ في المتصفح لكل مستخدم، وبتتمسح بعد البيع الناجح أو بزرار «تفريغ الفاتورة».
+    const DRAFT_KEY = 'pos_draft_v1:<%= username || "" %>';
+    const DRAFT_TTL = 12 * 3600 * 1000;
+    const FIELD_IDS = ['discountValue', 'discountType', 'notes', 'customerName', 'customerPhone', 'couponInput', 'paidNow', 'ctrlPatient', 'ctrlNid', 'ctrlRx', 'ctrlDoctor'];
+    let restoring = true, draftTimer;
+    function saveDraft() {
+      if (restoring) return;
+      try {
+        const fields = {}; FIELD_IDS.forEach((id) => { fields[id] = $(id).value; });
+        const has = cart.length || ['notes', 'customerName', 'customerPhone', 'couponInput'].some((id) => fields[id]) || parseFloat(fields.discountValue) > 0;
+        if (!has) { localStorage.removeItem(DRAFT_KEY); return; }
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          at: Date.now(), cart: cart.map((i) => ({ id: i.m.id, unit: i.sale_unit, q: i.quantity })), activeIdx, payMethod,
+          credit: isCredit(), customer: selectedCustomer, fields
+        }));
+      } catch (e) { /* التخزين مش متاح: نكمل عادي */ }
+    }
+    function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+    const scheduleDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 250); };
+    ['input', 'change', 'click'].forEach((ev) => document.addEventListener(ev, scheduleDraft, true));
+    window.addEventListener('beforeunload', saveDraft);
+
+    async function restoreDraft() {
+      let d = null;
+      try { d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) {}
+      if (!d || Date.now() - d.at > DRAFT_TTL) { clearDraft(); return; }
+      try {
+        if (d.cart && d.cart.length) {
+          const res = await fetch('/pos/by-ids?ids=' + d.cart.map((i) => i.id).join(','));
+          const fresh = new Map(((await res.json()).results || []).map((m) => [m.id, m]));
+          let dropped = 0;
+          d.cart.forEach((i) => {
+            const m = fresh.get(i.id);
+            if (!m) { dropped++; return; }
+            const unit = m.levels.some((l) => l.key === i.unit) ? i.unit : m.default_level;
+            cart.push({ m, sale_unit: unit, quantity: Math.max(parseInt(i.q, 10) || 1, 1) });
+          });
+          activeIdx = Math.min(Math.max(d.activeIdx || 0, 0), cart.length - 1);
+          if (dropped) showStatus('بعض الأصناف المحفوظة مبقتش متاحة واتشالت', 'err');
+        }
+        FIELD_IDS.forEach((id) => { if (d.fields && d.fields[id] != null) $(id).value = d.fields[id]; });
+        if (d.payMethod) { const b = $('payTabs').querySelector('button[data-v="' + d.payMethod + '"]'); if (b) b.click(); }
+        if (d.credit) setSaleType(true);
+        if (d.customer) chooseCustomer(d.customer);
+        renderCart();
+        if (d.fields && d.fields.couponInput) $('applyCouponBtn').click();
+        if (cart.length) showStatus('اتسترجعت الفاتورة اللي كانت مفتوحة', 'ok');
+      } catch (e) { /* مسودة تالفة: نتجاهلها */ }
+    }
+
     renderCart();
+    restoreDraft().finally(() => { restoring = false; });
   </script>
 </body>
 </html>

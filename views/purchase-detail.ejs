@@ -108,5 +108,12 @@
       <% } %>
     </div>
   </div>
+<script>
+// الطلبية اتسجلت: نمسح المسودة المحفوظة تلقائيًا لصفحة التشغيلات (لو اتبعتت من أقل من دقيقتين)
+try {
+  var t = parseInt(localStorage.getItem('batches_submitting'), 10);
+  if (t && Date.now() - t < 120000) { localStorage.removeItem('batches_draft_v1:<%= username || "" %>'); localStorage.removeItem('batches_submitting'); }
+} catch (e) {}
+</script>
 </body>
 </html>

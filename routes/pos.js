@@ -128,6 +128,18 @@ router.get('/lookup', async (req, res, next) => {
   }
 });
 
+// أصناف بالـ id (لاستعادة فاتورة محفوظة بعد الرفرش بأسعار ومخزون حاليين)
+router.get('/by-ids', async (req, res, next) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').map((x) => parseInt(x, 10)).filter((n) => Number.isInteger(n) && n > 0).slice(0, 100);
+    if (!ids.length) return res.json({ results: [] });
+    const rows = await query('SELECT * FROM medicines WHERE id = ANY($1::int[]) AND is_active = true', [ids]);
+    res.json({ results: (await withSellableStock(rows)).map(withLevels) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // مقاسات الصنف (نفس مجموعة المقاسات) بترتيب المقاس من الأصغر للأكبر — الكاشير بيستخدمها لأسهم ↑ ↓
 router.get('/sizes', async (req, res, next) => {
   try {
